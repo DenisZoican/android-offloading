@@ -11,6 +11,8 @@ import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
 import android.view.View;
+import android.widget.Button;
+import android.widget.TextView;
 import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
@@ -20,6 +22,8 @@ import com.google.android.gms.nearby.Nearby;
 import com.google.android.gms.nearby.connection.*;
 
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 public class MainActivity extends AppCompatActivity {
@@ -28,6 +32,7 @@ public class MainActivity extends AppCompatActivity {
     private ConnectionsClient connectionsClient;
     private String endpointId;
 
+    private List<String> allDevicesIds = new ArrayList<String>();
     private static final int MY_PERMISSIONS_REQUEST_NEARBY_WIFI_DEVICES = 2929;
 
     @Override
@@ -49,6 +54,10 @@ public class MainActivity extends AppCompatActivity {
         System.out.println("GRRRRRRRRRRRR");
         // Initialize the Nearby Connections client
         connectionsClient = Nearby.getConnectionsClient(this);
+        = Nearby.getConnectionsClient(this).setDisconnectedTimeout(endpointId, 5000L,
+                new ConnectionsClient.ConnectionsOptions.Builder()
+                        .setDisconnectedTimeoutPolicy(ConnectionsOptions.DISCONNECTED_TIMEOUT_POLICY_REMOVE_ENDPOINT)
+                        .build());
 
         /// Asking user to grant multiple permission. Should refactor. Too many if/else. Maybe some permissions are already granted and we shouldn't check
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT)
@@ -100,12 +109,21 @@ public class MainActivity extends AppCompatActivity {
 
         setContentView(R.layout.activity_main);
 
+        Button myButton = findViewById(R.id.button);
+        myButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                TextView insertedText = findViewById(R.id.editTextText);
+                sendMessage(insertedText.getText().toString());
+            }
+        });
+
 
     }
 
     private void startAdvertising() {
         System.out.println("GRRRRRRRR BEGIN ADVER");
-
+        Toast.makeText(MainActivity.this, "Start adverting", Toast.LENGTH_SHORT).show();
         AdvertisingOptions advertisingOptions =
                 new AdvertisingOptions.Builder().setStrategy(STRATEGY).build();
         connectionsClient.startAdvertising(
@@ -114,15 +132,18 @@ public class MainActivity extends AppCompatActivity {
                         (Void unused) -> {
                             // We're advertising!
                             System.out.println("GRRRRRRRR SUCCESS ADVER");
+                            Toast.makeText(MainActivity.this, "GRRRRRRRR SUCCESS ADVER", Toast.LENGTH_SHORT).show();
                         })
                 .addOnFailureListener(
                         (Exception e) -> {
                             // We were unable to start advertising.
                             System.out.println("GRRRRRRRR FAILED ADVER"+e.toString());
+                            Toast.makeText(MainActivity.this, "GRRRRRRRR FAILED ADVER"+e.toString(), Toast.LENGTH_SHORT).show();
                         });
     }
 
     private void startDiscovery() {
+        Toast.makeText(MainActivity.this, "Start discovery", Toast.LENGTH_SHORT).show();
         DiscoveryOptions discoveryOptions =
                 new DiscoveryOptions.Builder().setStrategy(STRATEGY).build();
         connectionsClient.startDiscovery(
@@ -131,11 +152,13 @@ public class MainActivity extends AppCompatActivity {
                         (Void unused) -> {
                             // We're discovering nearby endpoints!
                             System.out.println("GRRRRRRRR SUCCESS DISCOVERY");
+                            Toast.makeText(MainActivity.this, "GRRRRRRRR SUCCESS DISCOVERY", Toast.LENGTH_SHORT).show();
                         })
                 .addOnFailureListener(
                         (Exception e) -> {
                             // We were unable to start discovering.
                             System.out.println("GRRRRRRRR FAILED DISCOVERY"+e.toString());
+                            Toast.makeText(MainActivity.this, "GRRRRRRRR FAILED DISCOVERY"+e.toString(), Toast.LENGTH_SHORT).show();
                         });
     }
 
@@ -156,14 +179,6 @@ public class MainActivity extends AppCompatActivity {
                         // We're connected!
                         System.out.println("GRRRRRR CONNECTED");
 
-                        final Handler handler = new Handler(Looper.getMainLooper());
-                        handler.postDelayed(new Runnable() {
-                            @Override
-                            public void run() {
-                                sendMessage("Hello from here. Now we are connected <3");
-                            }
-                        }, 100);
-
                     } else {
                         // We were unable to connect.
                     }
@@ -179,8 +194,13 @@ public class MainActivity extends AppCompatActivity {
             new EndpointDiscoveryCallback() {
                 @Override
                 public void onEndpointFound(String endpointId, DiscoveredEndpointInfo info) {
-                    System.out.println("We found endpoint "+endpointId);
                     // We found an endpoint!
+                    System.out.println("We found endpoint "+endpointId);
+                    Toast.makeText(MainActivity.this, "We found an endpoint"+endpointId, Toast.LENGTH_SHORT).show();
+                    allDevicesIds.add(endpointId);
+                    updateAllDevicesTextView();
+
+                    // We request connections
                     connectionsClient.requestConnection(getLocalUserName(), endpointId, connectionLifecycleCallback)
                             .addOnSuccessListener(
                                     (Void unused) -> {
@@ -192,11 +212,17 @@ public class MainActivity extends AppCompatActivity {
                                         // We were unable to connect.
                                         System.out.println("We are unable connecting "+e.toString());
                                     });
+
+
                 }
 
                 @Override
                 public void onEndpointLost(String endpointId) {
                     // We lost an endpoint.
+                    System.out.println("We lost endpoint "+endpointId);
+                    Toast.makeText(MainActivity.this, "We forgot an endpoint"+endpointId, Toast.LENGTH_SHORT).show();
+                    allDevicesIds.remove(endpointId);
+                    updateAllDevicesTextView();
                 }
             };
 
@@ -206,6 +232,7 @@ public class MainActivity extends AppCompatActivity {
             // We received a payload!
             String receivedPayload = new String(payload.asBytes(), StandardCharsets.UTF_8);
             Log.d("Payload", receivedPayload);
+            Toast.makeText(MainActivity.this, receivedPayload, Toast.LENGTH_SHORT).show();
         }
 
         @Override
@@ -213,6 +240,17 @@ public class MainActivity extends AppCompatActivity {
             // Payload transfer status updated.
         }
     };
+
+    private void updateAllDevicesTextView(){
+        TextView allDevicesTextView = findViewById(R.id.allDevices);
+        String allDevicesIdString = "";
+        for (String s : allDevicesIds)
+        {
+            allDevicesIdString += s + "\t";
+        }
+
+        allDevicesTextView.setText(allDevicesIdString);
+    }
 
     private String getLocalUserName() {
         // Return a unique name for the local user.

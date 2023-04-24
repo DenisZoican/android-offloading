@@ -4,6 +4,8 @@ import android.Manifest;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 
+import android.app.ActivityManager;
+import android.content.Context;
 import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Bundle;
@@ -54,10 +56,6 @@ public class MainActivity extends AppCompatActivity {
         System.out.println("GRRRRRRRRRRRR");
         // Initialize the Nearby Connections client
         connectionsClient = Nearby.getConnectionsClient(this);
-        = Nearby.getConnectionsClient(this).setDisconnectedTimeout(endpointId, 5000L,
-                new ConnectionsClient.ConnectionsOptions.Builder()
-                        .setDisconnectedTimeoutPolicy(ConnectionsOptions.DISCONNECTED_TIMEOUT_POLICY_REMOVE_ENDPOINT)
-                        .build());
 
         /// Asking user to grant multiple permission. Should refactor. Too many if/else. Maybe some permissions are already granted and we shouldn't check
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT)
@@ -179,6 +177,9 @@ public class MainActivity extends AppCompatActivity {
                         // We're connected!
                         System.out.println("GRRRRRR CONNECTED");
 
+                        // We should send just if you do the offloading
+                        sendMessage("info:"+getDeviceFreeMemory());
+
                     } else {
                         // We were unable to connect.
                     }
@@ -250,6 +251,13 @@ public class MainActivity extends AppCompatActivity {
         }
 
         allDevicesTextView.setText(allDevicesIdString);
+    }
+
+    private float getDeviceFreeMemory(){
+        ActivityManager activityManager = (ActivityManager) getSystemService(Context.ACTIVITY_SERVICE);  //// Move this up. We don't need to initialize all the time. Just at the beginning
+        ActivityManager.MemoryInfo memoryInfo = new ActivityManager.MemoryInfo();
+        activityManager.getMemoryInfo(memoryInfo);
+        return memoryInfo.availMem;
     }
 
     private String getLocalUserName() {

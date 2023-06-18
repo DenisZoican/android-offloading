@@ -53,6 +53,9 @@ public class MainActivity extends AppCompatActivity {
 
         boolean isAdvertise = Build.BRAND.equals("google");
         device = isAdvertise ? new Advertise(connectionsClient) : new Discovery(connectionsClient);
+        device.setOnPayloadReceivedCallbackFunction((message)-> {
+            Toast.makeText(MainActivity.this, message, Toast.LENGTH_SHORT).show();
+        });
 
         if(isAdvertise) {
             // Start advertising the endpoint

@@ -52,6 +52,7 @@ public class Discovery extends Device{
     public void sendMessage(String message) {
         Payload payload = Payload.fromBytes(message.getBytes(StandardCharsets.UTF_8));
         allDevicesIds.stream().forEach((deviceId)-> {
+            System.out.println("GRRRRRRRRRRRR send message "+deviceId+" "+payload);
             connectionsClient.sendPayload(deviceId, payload);
         });
     }
@@ -69,7 +70,7 @@ public class Discovery extends Device{
                 @Override
                 public void onEndpointFound(String endpointId, DiscoveredEndpointInfo info) {
                     // We found an endpoint!
-                    System.out.println("We found endpoint "+endpointId);
+                    System.out.println("GRRRRRRRR We found endpoint "+endpointId);
 
                     // We request connections
                     connectionsClient.requestConnection(uniqueName, endpointId, connectionLifecycleCallback)
@@ -127,6 +128,7 @@ public class Discovery extends Device{
             // We received a payload!
             String receivedPayload = new String(payload.asBytes(), StandardCharsets.UTF_8);
             Log.d("Payload", receivedPayload);
+            onPayloadReceivedCallbackFunction.accept(receivedPayload);
         }
 
         @Override

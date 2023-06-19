@@ -91,6 +91,7 @@ public class Advertise extends Device {
             // We received a payload!
             String receivedPayload = new String(payload.asBytes(), StandardCharsets.UTF_8);
             Log.d("Payload", receivedPayload);
+            onPayloadReceivedCallbackFunction.accept(receivedPayload);
         }
 
         @Override

@@ -31,7 +31,7 @@ public class Discovery extends Device{
     private Set<String> allDevicesIds = new ArraySet();
 
     public Discovery(ConnectionsClient connectionsClient){
-        super(connectionsClient, DeviceType.Discovery);
+        super(connectionsClient);
     }
 
     public void start() {

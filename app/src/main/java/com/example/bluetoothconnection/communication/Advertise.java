@@ -22,7 +22,7 @@ import javax.security.auth.Subject;
 public class Advertise extends Device {
     private String discoveryDeviceId; ///// Rename it later
     public Advertise(ConnectionsClient connectionsClient){
-        super(connectionsClient, DeviceType.Advertise);
+        super(connectionsClient);
     }
 
     public void start(){

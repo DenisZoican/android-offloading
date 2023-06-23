@@ -26,7 +26,9 @@ public class Permissions {
             Manifest.permission.BLUETOOTH_SCAN,
             Manifest.permission.BLUETOOTH_ADVERTISE,
             Manifest.permission.NEARBY_WIFI_DEVICES,
-            Manifest.permission.ACCESS_FINE_LOCATION
+            Manifest.permission.ACCESS_FINE_LOCATION,
+            Manifest.permission.READ_EXTERNAL_STORAGE,
+            Manifest.permission.WRITE_EXTERNAL_STORAGE,
     };
 
     ///// !!!!!!!!! Check if we need all of these. Don't forget to try on a new phone where are no permissions !!!!!!!!!!! ////////////

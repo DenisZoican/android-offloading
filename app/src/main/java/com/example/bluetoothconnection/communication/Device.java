@@ -15,11 +15,9 @@ public abstract class Device {
     final String uniqueName = getUniqueName();
 
     public Consumer<String> onPayloadReceivedCallbackFunction;
-    final private DeviceType deviceType;
 
-    public Device(ConnectionsClient connectionsClient, DeviceType deviceType){
+    public Device(ConnectionsClient connectionsClient){
         this.connectionsClient = connectionsClient;
-        this.deviceType = deviceType;
     }
 
     public void setOnPayloadReceivedCallbackFunction(Consumer<String> onPayloadReceivedCallbackFunction){

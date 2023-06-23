@@ -90,8 +90,16 @@ public class Advertise extends Device {
         public void onPayloadReceived(String endpointId, Payload payload) {
             // We received a payload!
             String receivedPayload = new String(payload.asBytes(), StandardCharsets.UTF_8);
+            String processedMessage;
+
             Log.d("Payload", receivedPayload);
-            onPayloadReceivedCallbackFunction.accept(receivedPayload);
+            try { ////////// Simulate that we do something to the message
+                Thread.sleep(2000);
+                processedMessage = receivedPayload + "<IAddedThisHere>";
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
+            sendMessage(processedMessage);
         }
 
         @Override

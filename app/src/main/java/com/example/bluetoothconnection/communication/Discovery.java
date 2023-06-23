@@ -4,6 +4,7 @@ import static com.example.bluetoothconnection.communication.Common.SERVICE_ID;
 import static com.example.bluetoothconnection.communication.Common.STRATEGY;
 import static com.example.bluetoothconnection.utils.Common.getUniqueName;
 
+import android.util.ArraySet;
 import android.util.Log;
 import android.widget.Toast;
 
@@ -23,10 +24,11 @@ import com.google.android.gms.nearby.connection.PayloadTransferUpdate;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 public class Discovery extends Device{
 
-    private List<String> allDevicesIds = new ArrayList();
+    private Set<String> allDevicesIds = new ArraySet();
 
     public Discovery(ConnectionsClient connectionsClient){
         super(connectionsClient, DeviceType.Discovery);
@@ -128,6 +130,7 @@ public class Discovery extends Device{
             // We received a payload!
             String receivedPayload = new String(payload.asBytes(), StandardCharsets.UTF_8);
             Log.d("Payload", receivedPayload);
+
             onPayloadReceivedCallbackFunction.accept(receivedPayload);
         }
 

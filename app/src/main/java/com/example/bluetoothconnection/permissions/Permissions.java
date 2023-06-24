@@ -9,7 +9,9 @@ import android.util.Log;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 
 public class Permissions {
     private Context context;
@@ -35,18 +37,18 @@ public class Permissions {
     /// Asking user to grant multiple permission. Should refactor. Too many if/else. Maybe some permissions are already granted and we shouldn't check
 
     final public void checkAllPermissions(){ ///// !!!!!! When using this method, we pass (this, this). Not right. Find a way to pass just one this
-        Arrays.stream(ALL_PERMISSIONS).forEach((permission)->_checkPermission(permission));
+        String[] ungrantedPermissions = this.getUngrantedPermissions();
+        ActivityCompat.requestPermissions(activity,
+                ungrantedPermissions,
+                Permissions.MY_PERMISSIONS_REQUEST_NEARBY_WIFI_DEVICES);
     }
 
-    private void _checkPermission(String permissionType) {
-        System.out.println("GRRRRRRRR We are checking permission "+permissionType);
-        if (ContextCompat.checkSelfPermission(context, permissionType)
-                != PackageManager.PERMISSION_GRANTED) {
-            // Permission is not granted, request it
-            System.out.println("GRRRRRRRR We are in if checking permission "+permissionType);
-            ActivityCompat.requestPermissions(activity,
-                    new String[]{permissionType},
-                    Permissions.MY_PERMISSIONS_REQUEST_NEARBY_WIFI_DEVICES);
-        }
+    private String[] getUngrantedPermissions(){
+        return Arrays.stream(ALL_PERMISSIONS).filter((permission)-> !_isPermissionGranted(permission)).toArray(size -> new String[size]);
+    }
+
+    private boolean _isPermissionGranted(String permission){
+        return ContextCompat.checkSelfPermission(context, permission)
+                == PackageManager.PERMISSION_GRANTED;
     }
 }

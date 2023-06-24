@@ -2,12 +2,9 @@ package com.example.bluetoothconnection;
 
 import com.example.bluetoothconnection.communication.Advertise;
 import com.example.bluetoothconnection.communication.Device;
-import com.example.bluetoothconnection.communication.DeviceType;
 import com.example.bluetoothconnection.communication.Discovery;
 import com.example.bluetoothconnection.opencv.ImageProcessing;
 import com.example.bluetoothconnection.permissions.Permissions;
-
-import android.Manifest;
 
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
@@ -20,7 +17,6 @@ import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
-import android.media.Image;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -37,7 +33,6 @@ import com.google.android.gms.nearby.connection.*;
 import org.opencv.android.OpenCVLoader;
 import org.opencv.android.Utils;
 import org.opencv.core.Mat;
-import org.opencv.imgproc.Imgproc;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -162,10 +157,11 @@ public class MainActivity extends AppCompatActivity {
 
                                 // Display or use the processedBitmap as needed
                                 List<Mat> dividedMats = ImageProcessing.divideImages(originalImage,3);
-                                Mat dividedMat = dividedMats.get(3);
+                                Mat dividedMat = dividedMats.get(0);
+                                Mat processedMat = ImageProcessing.processImage(dividedMat);
 
                                 Bitmap processedBitmap2 = Bitmap.createBitmap(dividedMat.cols(), dividedMat.rows(), Bitmap.Config.ARGB_8888);
-                                Utils.matToBitmap(dividedMat, processedBitmap2);
+                                Utils.matToBitmap(processedMat, processedBitmap2);
 
                                 imageView.setImageBitmap(processedBitmap2);
                             }

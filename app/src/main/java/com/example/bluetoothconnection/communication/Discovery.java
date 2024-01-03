@@ -6,9 +6,11 @@ import static com.example.bluetoothconnection.communication.Common.convertMatToP
 
 import android.util.ArraySet;
 import android.util.Log;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import com.example.bluetoothconnection.MainActivity;
+import com.example.bluetoothconnection.R;
 import com.example.bluetoothconnection.opencv.ImageProcessing;
 import com.google.android.gms.nearby.connection.ConnectionInfo;
 import com.google.android.gms.nearby.connection.ConnectionLifecycleCallback;
@@ -106,6 +108,7 @@ public class Discovery extends Device{
                     System.out.println("We lost endpoint "+endpointId);
                     //////// !!!!!!!!!! verify if it throws exception when list doesn't contain endpointId !!!!!!!!!!!
                     allDevicesIds.remove(endpointId);
+                    updateAllDevicesTextView();
                 }
             };
 
@@ -125,6 +128,7 @@ public class Discovery extends Device{
                         System.out.println("GRRRRRR CONNECTED");
 
                         allDevicesIds.add(endpointId);
+                        updateAllDevicesTextView();
                     } else {
                         // We were unable to connect.
                     }
@@ -156,4 +160,16 @@ public class Discovery extends Device{
             System.out.println("endpoint " + endpointId + update.toString());
         }
     };
+
+    private void updateAllDevicesTextView(){
+        TextView allDevicesTextView = findViewById(R.id.allDevices);
+
+        String allDevicesIdString = "";
+        for (String s : allDevicesIds)
+        {
+            allDevicesIdString += s + "\t";
+        }
+
+        allDevicesTextView.setText(allDevicesIdString);
+    }
 }

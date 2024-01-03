@@ -34,7 +34,7 @@ public class Advertise extends Device {
                 .addOnSuccessListener(
                         (Void unused) -> {
                             // We're advertising!
-                            System.out.println("SUCCESS ADVER");
+                            System.out.println("SUCCESS ADVER "+this.uniqueName);
                         })
                 .addOnFailureListener(
                         (Exception e) -> {

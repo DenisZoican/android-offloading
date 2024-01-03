@@ -6,7 +6,6 @@ import static com.example.bluetoothconnection.opencv.ImageProcessing.convertInpu
 import com.example.bluetoothconnection.communication.Advertise;
 import com.example.bluetoothconnection.communication.Device;
 import com.example.bluetoothconnection.communication.Discovery;
-import com.example.bluetoothconnection.opencv.ImageProcessing;
 import com.example.bluetoothconnection.permissions.Permissions;
 
 import androidx.activity.result.ActivityResultLauncher;
@@ -19,7 +18,6 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -34,16 +32,15 @@ import com.google.android.gms.nearby.Nearby;
 import com.google.android.gms.nearby.connection.*;
 
 import org.opencv.android.OpenCVLoader;
-import org.opencv.android.Utils;
 import org.opencv.core.Mat;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.List;
 
 public class MainActivity extends AppCompatActivity {
       private ConnectionsClient connectionsClient;
       Device device;
+
     ImageView imageView;
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
@@ -62,7 +59,7 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        System.out.println("GRRRRRRRRRRRR OpenCV "+ OpenCVLoader.initDebug());
+        System.out.println("GRRRRRRRRRRRR OpenCV"+ OpenCVLoader.initDebug());
         System.out.println("GRRRRRRRRRRRR");
         // Initialize the Nearby Connections client
         connectionsClient = Nearby.getConnectionsClient(this); //may be deleted because it's used just here
@@ -94,18 +91,6 @@ public class MainActivity extends AppCompatActivity {
         initializeUiElements();
     }
 
-    /*private void updateAllDevicesTextView(){
-        TextView allDevicesTextView = findViewById(R.id.allDevices);
-
-        String allDevicesIdString = "";
-        for (String s : allDevicesIds)
-        {
-            allDevicesIdString += s + "\t";
-        }
-
-        allDevicesTextView.setText(allDevicesIdString);
-    }*/
-
     private float getDeviceFreeMemory(){
         ActivityManager activityManager = (ActivityManager) getSystemService(Context.ACTIVITY_SERVICE);  //// Move this up. We don't need to initialize all the time. Just at the beginning
         ActivityManager.MemoryInfo memoryInfo = new ActivityManager.MemoryInfo();
@@ -125,8 +110,7 @@ public class MainActivity extends AppCompatActivity {
             public void onClick(View v) {
                 TextView insertedText = findViewById(R.id.editTextText);
                 System.out.println(insertedText);
-                //
-                // device.sendMessage(insertedText.getText().toString());
+                //device.sendMessage(insertedText.getText().toString());
             }
         });
     }
@@ -159,8 +143,6 @@ public class MainActivity extends AppCompatActivity {
                                 // Utils.matToBitmap(originalImage, processedBitmap);
 
                                 device.sendMessage(originalImage);
-
-
                             }
 
                             inputStream.close();

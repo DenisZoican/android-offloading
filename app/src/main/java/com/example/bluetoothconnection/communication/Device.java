@@ -2,6 +2,8 @@ package com.example.bluetoothconnection.communication;
 
 import static com.example.bluetoothconnection.utils.Common.getUniqueName;
 
+import androidx.appcompat.app.AppCompatActivity;
+
 import com.google.android.gms.nearby.connection.ConnectionsClient;
 
 import org.opencv.core.Mat;
@@ -11,7 +13,7 @@ import java.util.Observable;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
-public abstract class Device {
+public abstract class Device extends AppCompatActivity {
 
     final ConnectionsClient connectionsClient;
     final String uniqueName = getUniqueName();

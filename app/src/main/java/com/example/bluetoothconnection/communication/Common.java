@@ -15,7 +15,7 @@ public class Common {
     public static Payload convertMatToPayload(Mat image){
         // Convert the Mat to a byte array
         MatOfByte matOfByte = new MatOfByte();
-        Imgcodecs.imencode("jpg", image, matOfByte); /////////// We can specify the extension. Now is empty
+        Imgcodecs.imencode(".jpg", image, matOfByte); /////////// We can specify the extension. Now is empty
         byte[] byteArray = matOfByte.toArray();
         return Payload.fromBytes(byteArray);
     }

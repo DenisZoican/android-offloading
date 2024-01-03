@@ -2,10 +2,12 @@ package com.example.bluetoothconnection.communication;
 
 import static com.example.bluetoothconnection.communication.Common.SERVICE_ID;
 import static com.example.bluetoothconnection.communication.Common.STRATEGY;
-import static com.example.bluetoothconnection.utils.Common.getUniqueName;
+import static com.example.bluetoothconnection.communication.Common.convertMatToPayload;
+import static com.example.bluetoothconnection.communication.Common.convertPayloadToMat;
 
 import android.util.Log;
 
+import com.example.bluetoothconnection.opencv.ImageProcessing;
 import com.google.android.gms.nearby.connection.AdvertisingOptions;
 import com.google.android.gms.nearby.connection.ConnectionInfo;
 import com.google.android.gms.nearby.connection.ConnectionLifecycleCallback;
@@ -15,9 +17,7 @@ import com.google.android.gms.nearby.connection.Payload;
 import com.google.android.gms.nearby.connection.PayloadCallback;
 import com.google.android.gms.nearby.connection.PayloadTransferUpdate;
 
-import java.nio.charset.StandardCharsets;
-
-import javax.security.auth.Subject;
+import org.opencv.core.Mat;
 
 public class Advertise extends Device {
     private String discoveryDeviceId; ///// Rename it later
@@ -28,7 +28,7 @@ public class Advertise extends Device {
     public void start(){
         System.out.println("BEGIN ADVER");
         AdvertisingOptions advertisingOptions =
-                new AdvertisingOptions.Builder().setStrategy(STRATEGY).build();
+            new AdvertisingOptions.Builder().setStrategy(STRATEGY).build();
 
         connectionsClient.startAdvertising(this.uniqueName, SERVICE_ID, connectionLifecycleCallback, advertisingOptions)
                 .addOnSuccessListener(
@@ -39,12 +39,12 @@ public class Advertise extends Device {
                 .addOnFailureListener(
                         (Exception e) -> {
                             // We were unable to start advertising.
-                            System.out.println("FAILED ADVER"+e.toString());
+                            System.out.println("FAILED ADVER" + e.toString());
                         });
     }
 
-    public void sendMessage(String message) {
-        Payload payload = Payload.fromBytes(message.getBytes(StandardCharsets.UTF_8));
+    public void sendMessage(Mat image) {
+        Payload payload = convertMatToPayload(image);
         connectionsClient.sendPayload(discoveryDeviceId, payload);
     }
     public void disconnect() {
@@ -73,7 +73,7 @@ public class Advertise extends Device {
                         System.out.println("GRRRRRR CONNECTED");
 
                         // We should send just if you do the offloading
-                        sendMessage("info: memory usage");
+                        //sendMessage("info: memory usage");
 
                     } else {
                         // We were unable to connect.
@@ -89,17 +89,16 @@ public class Advertise extends Device {
         @Override
         public void onPayloadReceived(String endpointId, Payload payload) {
             // We received a payload!
-            String receivedPayload = new String(payload.asBytes(), StandardCharsets.UTF_8);
-            String processedMessage;
+            Mat receivedImage = convertPayloadToMat(payload,500,500); ////////////// Dimensions are false 100%
+            Mat processedImage;
 
-            Log.d("Payload", receivedPayload);
             try { ////////// Simulate that we do something to the message
                 Thread.sleep(2000);
-                processedMessage = receivedPayload + "<IAddedThisHere>";
+                processedImage = ImageProcessing.processImage(receivedImage);
             } catch (InterruptedException e) {
                 throw new RuntimeException(e);
             }
-            sendMessage(processedMessage);
+            sendMessage(processedImage);
         }
 
         @Override

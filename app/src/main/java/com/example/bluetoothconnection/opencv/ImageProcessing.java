@@ -1,12 +1,21 @@
 package com.example.bluetoothconnection.opencv;
 
 import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+
+import com.google.android.gms.nearby.connection.Payload;
 
 import org.opencv.android.Utils;
+import org.opencv.core.CvType;
 import org.opencv.core.Mat;
+import org.opencv.core.MatOfByte;
 import org.opencv.core.Range;
+import org.opencv.core.Size;
+import org.opencv.imgcodecs.Imgcodecs;
 import org.opencv.imgproc.Imgproc;
 
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -48,5 +57,20 @@ public class ImageProcessing {
         dividedImages.add(dividedMat);
 
         return dividedImages;
+    }
+
+    public static Mat convertInputStreamToMat(InputStream inputStream){
+        Bitmap bitmap = BitmapFactory.decodeStream(inputStream);
+        Mat image = new Mat();
+        Utils.bitmapToMat(bitmap, image);
+
+        return image;
+    }
+
+    public static Bitmap convertImageToBitmap(Mat image) {
+        Bitmap bitmap = Bitmap.createBitmap(image.cols(), image.rows(), Bitmap.Config.ARGB_8888);
+        Utils.matToBitmap(image, bitmap);
+
+        return bitmap;
     }
 }

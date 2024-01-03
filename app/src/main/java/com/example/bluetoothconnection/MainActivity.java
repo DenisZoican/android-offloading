@@ -1,5 +1,8 @@
 package com.example.bluetoothconnection;
 
+import static com.example.bluetoothconnection.opencv.ImageProcessing.convertImageToBitmap;
+import static com.example.bluetoothconnection.opencv.ImageProcessing.convertInputStreamToMat;
+
 import com.example.bluetoothconnection.communication.Advertise;
 import com.example.bluetoothconnection.communication.Device;
 import com.example.bluetoothconnection.communication.Discovery;
@@ -41,6 +44,7 @@ import java.util.List;
 public class MainActivity extends AppCompatActivity {
       private ConnectionsClient connectionsClient;
       Device device;
+    ImageView imageView;
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode,permissions,grantResults);
@@ -68,10 +72,12 @@ public class MainActivity extends AppCompatActivity {
         // Permission is already granted
         System.out.println("GRRRRRRRRRRRR  GRANTED");
 
-        boolean isAdvertise = Build.BRAND.equals("google");
+        boolean isAdvertise = Build.MODEL.equals("Pixel 7");
         device = isAdvertise ? new Advertise(connectionsClient) : new Discovery(connectionsClient);
-        device.setOnPayloadReceivedCallbackFunction((message)-> {
-            Toast.makeText(MainActivity.this, message, Toast.LENGTH_SHORT).show();
+        device.setOnPayloadReceivedCallbackFunction((image)-> {
+            Bitmap bitmap = convertImageToBitmap(image);
+
+            imageView.setImageBitmap(bitmap);
         });
 
         if(isAdvertise) {
@@ -118,7 +124,9 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onClick(View v) {
                 TextView insertedText = findViewById(R.id.editTextText);
-                device.sendMessage(insertedText.getText().toString());
+                System.out.println(insertedText);
+                //
+                // device.sendMessage(insertedText.getText().toString());
             }
         });
     }
@@ -133,7 +141,7 @@ public class MainActivity extends AppCompatActivity {
         });
     }
     private ActivityResultLauncher<Intent> generateActivityLauncherForProcessedImage(){
-        ImageView imageView = findViewById(R.id.imageView);
+        imageView = findViewById(R.id.imageView);
         return registerForActivityResult(
                 new ActivityResultContracts.StartActivityForResult(),
                 result -> {
@@ -144,26 +152,15 @@ public class MainActivity extends AppCompatActivity {
                             InputStream inputStream = getContentResolver().openInputStream(imageUri);
                             if (inputStream != null) {
                                 // Read the image data and convert it to a Mat object
-                                Bitmap bitmap = BitmapFactory.decodeStream(inputStream);
-                                Mat originalImage = new Mat();
-
-                                // Process image
-                                Utils.bitmapToMat(bitmap, originalImage);
-                                Mat processImage = ImageProcessing.processImage(originalImage);
+                                Mat originalImage = convertInputStreamToMat(inputStream);
 
                                 // Convert the modified image back to a Bitmap for display or further use
-                                Bitmap processedBitmap = Bitmap.createBitmap(processImage.cols(), processImage.rows(), Bitmap.Config.ARGB_8888);
-                                Utils.matToBitmap(processImage, processedBitmap);
+                                // Bitmap processedBitmap = Bitmap.createBitmap(originalImage.cols(), originalImage.rows(), Bitmap.Config.ARGB_8888);
+                                // Utils.matToBitmap(originalImage, processedBitmap);
 
-                                // Display or use the processedBitmap as needed
-                                List<Mat> dividedMats = ImageProcessing.divideImages(originalImage,3);
-                                Mat dividedMat = dividedMats.get(0);
-                                Mat processedMat = ImageProcessing.processImage(dividedMat);
+                                device.sendMessage(originalImage);
 
-                                Bitmap processedBitmap2 = Bitmap.createBitmap(dividedMat.cols(), dividedMat.rows(), Bitmap.Config.ARGB_8888);
-                                Utils.matToBitmap(processedMat, processedBitmap2);
 
-                                imageView.setImageBitmap(processedBitmap2);
                             }
 
                             inputStream.close();

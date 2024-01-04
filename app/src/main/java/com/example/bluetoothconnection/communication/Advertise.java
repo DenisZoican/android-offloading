@@ -53,16 +53,9 @@ public class Advertise extends Device {
                         });
     }
 
-    public void sendEmptyMessage(){
-
-    }
-    public void sendMat(Mat image) {
-        Payload payload = convertMatToPayload(image);
-        connectionsClient.sendPayload(discoveryDeviceId, Payload.fromBytes("Hello".getBytes()));
-    }
-
     public void sendMessage(Mat image) {
-        System.out.println("Send image from advertise");
+        Payload processedPayload = convertMatToPayload(image);
+        connectionsClient.sendPayload(discoveryDeviceId, processedPayload);
     }
     public void disconnect() {
         connectionsClient.disconnectFromEndpoint(discoveryDeviceId);
@@ -123,9 +116,7 @@ public class Advertise extends Device {
             ImageView imageView = activity.findViewById(R.id.imageView);
             imageView.setImageBitmap(convertImageToBitmap(receivedMat));
 
-            Payload processedPayload = convertMatToPayload(processedMat);
-
-            connectionsClient.sendPayload(discoveryDeviceId, processedPayload);
+            sendMessage(processedMat);
 
             //Mat receivedImage = convertPayloadToMat(payload,500,500); ////////////// Dimensions are false 100%
 

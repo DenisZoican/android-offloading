@@ -34,7 +34,6 @@ public abstract class Device {
 
     abstract public void start();
     abstract public void sendMessage(Mat image); ////////////// Maybe remove this after testing.
-    abstract public void sendEmptyMessage();
     abstract public void disconnect();
     abstract public void destroy();
 }

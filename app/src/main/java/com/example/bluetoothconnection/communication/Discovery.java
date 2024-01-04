@@ -5,9 +5,9 @@ import static com.example.bluetoothconnection.communication.Common.STRATEGY;
 import static com.example.bluetoothconnection.communication.Common.convertMatToPayload;
 import static com.example.bluetoothconnection.communication.Common.convertPayloadToMat;
 import static com.example.bluetoothconnection.opencv.ImageProcessing.convertImageToBitmap;
+import static com.example.bluetoothconnection.opencv.ImageProcessing.replaceMat;
 
 import android.app.Activity;
-import android.content.Intent;
 import android.graphics.Bitmap;
 import android.util.ArraySet;
 import android.view.View;
@@ -35,13 +35,15 @@ import org.opencv.core.Size;
 import org.opencv.imgproc.Imgproc;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 public class Discovery extends Device{
     public static final int PICK_IMAGE_REQUEST = 1;
     private Set<String> allDevicesIds = new ArraySet();
-    private Set<String> sentMessageDeviceIds = new ArraySet<>();
+    private Map<String,Integer> devicesUsedInCurrentCommunication = new HashMap<>();
     private Mat imageFromGallery;
 
     public Discovery(Activity activity, ConnectionsClient connectionsClient){
@@ -50,7 +52,6 @@ public class Discovery extends Device{
 
     public void start() {
         activity.setContentView(R.layout.activity_discover_main);
-
         initializeUiElements();
 
         System.out.println("STTTTTTTTTTTTART DISC");
@@ -70,25 +71,16 @@ public class Discovery extends Device{
     }
 
     public void setImageFromGallery(Mat imageFromGallery){
-        this.imageFromGallery = imageFromGallery;
-    }
+        Mat resizedMat = new Mat(500, 500, CvType.CV_8UC4);
+        Imgproc.resize(imageFromGallery, resizedMat, new Size(500, 500), 0, 0, Imgproc.INTER_LINEAR);
 
-    public void sendEmptyMessage() {
-        List<String> allDevicesArray = new ArrayList<>(allDevicesIds);
-        int allDevicesArrayLength = allDevicesArray.size();
+        /////////////// MUST RESIZE. FIND MAX SIZE FOR PAYLOAD
 
-        for(int i=0;i<allDevicesArrayLength;i++){
-            String deviceId = allDevicesArray.get(i);
-
-            sentMessageDeviceIds.add(deviceId);
-            connectionsClient.sendPayload(deviceId,Payload.fromBytes("Test".getBytes()));
-        }
-
-        System.out.println("Sent all");
+        this.imageFromGallery = resizedMat;
     }
 
     public void sendMessage(Mat image) {
-        List<Mat> divideImages = ImageProcessing.divideImages(image,allDevicesIds.size());
+        List<Mat> divideImages = ImageProcessing.divideImages(imageFromGallery,allDevicesIds.size());
         List<String> allDevicesArray = new ArrayList<>(allDevicesIds);
         int allDevicesArrayLength = allDevicesArray.size();
 
@@ -96,11 +88,9 @@ public class Discovery extends Device{
             String deviceId = allDevicesArray.get(i);
             Payload payload = convertMatToPayload(divideImages.get(i));
 
-            sentMessageDeviceIds.add(deviceId);
-            connectionsClient.sendPayload(deviceId,Payload.fromBytes("Test".getBytes()));
+            devicesUsedInCurrentCommunication.put(deviceId, i);
+            connectionsClient.sendPayload(deviceId, payload);
         }
-
-        System.out.println("Sent all");
     }
 
 
@@ -178,24 +168,17 @@ public class Discovery extends Device{
             System.out.println("RECEIVER DISCOVERY");
             Toast.makeText(activity, "Received", Toast.LENGTH_SHORT).show();
 
-            ImageView imageView = activity.findViewById(R.id.imageView);
-
             Mat receivedMat = convertPayloadToMat(payload);
-            Bitmap receivedImageBitmap = convertImageToBitmap(receivedMat);
+
+            imageFromGallery = replaceMat(imageFromGallery, receivedMat, devicesUsedInCurrentCommunication.get(endpointId));
+            ImageView imageView = activity.findViewById(R.id.imageView); ////////// RECEIVES JUST 499/499/1
+            Bitmap receivedImageBitmap = convertImageToBitmap(imageFromGallery);
             imageView.setImageBitmap(receivedImageBitmap);
 
-            // We received a payload!
-            /*
-            Mat receivedImage = Common.convertPayloadToMat(payload, 500, 500);
-
-            sentMessageDeviceIds.remove(endpointId); ///// This may be a problem. IF we remove an id from different threads, we may have inconsticency.
-            if(sentMessageDeviceIds.isEmpty()){
+            devicesUsedInCurrentCommunication.remove(endpointId); ///// This may be a problem. IF we remove an id from different threads, we may have inconsticency.
+            if(devicesUsedInCurrentCommunication.isEmpty()){
                 System.out.println("We have all parts");
             }
-
-            onPayloadReceivedCallbackFunction.accept(receivedImage);
-            */
-
         }
 
         @Override
@@ -216,17 +199,10 @@ public class Discovery extends Device{
         sendButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                List<String> allDevicesArray = new ArrayList<>(allDevicesIds);
-
-                Mat resizedMat = new Mat(500, 500, CvType.CV_8UC4);
-                Imgproc.resize(imageFromGallery, resizedMat, new Size(500, 500), 0, 0, Imgproc.INTER_LINEAR);
-
-                Payload payload = convertMatToPayload(resizedMat);
-                connectionsClient.sendPayload(allDevicesArray.get(0),payload);
+                sendMessage(imageFromGallery);
 
                 ImageView imageView = activity.findViewById(R.id.imageView);
-                imageView.setImageBitmap(convertImageToBitmap(resizedMat));
-                //sendMessage(imageFromGallery);
+                imageView.setImageBitmap(convertImageToBitmap(imageFromGallery));
             }
         });
     }

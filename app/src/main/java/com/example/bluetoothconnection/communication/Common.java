@@ -20,10 +20,8 @@ public class Common {
         return Payload.fromBytes(byteArray);
     }
 
-    public static Mat convertPayloadToMat(Payload payload, int imageHeight, int imageWidth){
-        Mat reconstructedImage = new Mat(new Size(imageWidth, imageHeight), CvType.CV_8UC3);
-        reconstructedImage.put(0, 0, payload.asBytes());
-
-        return reconstructedImage;
+    public static Mat convertPayloadToMat(Payload payload){
+        MatOfByte matOfByte = new MatOfByte(payload.asBytes());
+        return Imgcodecs.imdecode(matOfByte, Imgcodecs.IMREAD_UNCHANGED);
     }
 }

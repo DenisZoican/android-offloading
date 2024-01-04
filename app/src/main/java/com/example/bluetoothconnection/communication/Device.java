@@ -2,6 +2,8 @@ package com.example.bluetoothconnection.communication;
 
 import static com.example.bluetoothconnection.utils.Common.getUniqueName;
 
+import android.app.Activity;
+
 import androidx.appcompat.app.AppCompatActivity;
 
 import com.google.android.gms.nearby.connection.ConnectionsClient;
@@ -13,14 +15,16 @@ import java.util.Observable;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
-public abstract class Device extends AppCompatActivity {
+public abstract class Device {
 
+    Activity activity;
     final ConnectionsClient connectionsClient;
     final String uniqueName = getUniqueName();
 
     public Consumer<Mat> onPayloadReceivedCallbackFunction;
 
-    public Device(ConnectionsClient connectionsClient){
+    public Device(Activity activity, ConnectionsClient connectionsClient){
+        this.activity = activity;
         this.connectionsClient = connectionsClient;
     }
 
@@ -30,6 +34,7 @@ public abstract class Device extends AppCompatActivity {
 
     abstract public void start();
     abstract public void sendMessage(Mat image); ////////////// Maybe remove this after testing.
+    abstract public void sendEmptyMessage();
     abstract public void disconnect();
     abstract public void destroy();
 }

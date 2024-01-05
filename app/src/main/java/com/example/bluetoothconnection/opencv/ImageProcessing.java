@@ -29,6 +29,31 @@ public class ImageProcessing {
         return grayscaleMat;
     }
 
+    /// destMat - CVU_4, subMat - CVU_1
+    public static Mat replaceMat(Mat destMat, Mat subMat, int beginRowIndex){
+        Mat resultMat = destMat.clone();
+
+        int destMatHeight = destMat.height();
+
+        int subMatWidth = subMat.width();
+        int subMatHeight = subMat.height();
+
+        int heightOffset = beginRowIndex*subMatHeight;
+        System.out.println("Zoicanel Limits are "+destMatHeight+"--"+destMat.width());
+        System.out.println("Zoicanel replace "+(beginRowIndex*subMatHeight)+"---"+(beginRowIndex*subMatHeight+subMatHeight));
+        for(int i=heightOffset;i<heightOffset+subMatHeight && i<destMatHeight;i++){
+            for(int j=0;j<subMatWidth;j++){
+                System.out.println("Zoicanel "+i+"--"+j);
+                double grayScaleValue = subMat.get(i - heightOffset, j)[0];
+                double[] newPixel = new double[]{grayScaleValue, grayScaleValue, grayScaleValue, 255.0};
+
+                resultMat.put(i,j,newPixel);
+            }
+        }
+
+        return resultMat;
+    }
+
     public static List<Mat> divideImages(Mat image, int divisionsCount){
         List<Mat> dividedImages = new ArrayList<Mat>();
 
@@ -39,10 +64,10 @@ public class ImageProcessing {
 
         for(int i=0;i<divisionsCount-1;i++){
                 int startI = i * subMatHeight;
-                int endI = (i+1) * subMatHeight - 1;
+                int endI = (i+1) * subMatHeight;
 
                 Range rowRange = new Range(startI, endI);
-                Range colRange = new Range(0, imageWidth-1);
+                Range colRange = new Range(0, imageWidth);
 
                 Mat dividedMat = image.submat(rowRange, colRange);
                 dividedImages.add(dividedMat);
@@ -50,8 +75,8 @@ public class ImageProcessing {
 
         int startI =  (divisionsCount - 1) * subMatHeight;
 
-        Range rowRange = new Range(startI, imageHeight-1);
-        Range colRange = new Range(0, imageWidth-1);
+        Range rowRange = new Range(startI, imageHeight);
+        Range colRange = new Range(0, imageWidth);
 
         Mat dividedMat = image.submat(rowRange, colRange);
         dividedImages.add(dividedMat);

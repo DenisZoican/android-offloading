@@ -3,13 +3,19 @@ package com.example.bluetoothconnection.communication;
 import static com.example.bluetoothconnection.communication.Common.SERVICE_ID;
 import static com.example.bluetoothconnection.communication.Common.STRATEGY;
 import static com.example.bluetoothconnection.communication.Common.convertMatToPayload;
+import static com.example.bluetoothconnection.communication.Common.convertPayloadToMat;
+import static com.example.bluetoothconnection.opencv.ImageProcessing.convertImageToBitmap;
+import static com.example.bluetoothconnection.opencv.ImageProcessing.replaceMat;
 
+import android.app.Activity;
+import android.graphics.Bitmap;
 import android.util.ArraySet;
-import android.util.Log;
+import android.view.View;
+import android.widget.Button;
+import android.widget.ImageView;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import com.example.bluetoothconnection.MainActivity;
 import com.example.bluetoothconnection.R;
 import com.example.bluetoothconnection.opencv.ImageProcessing;
 import com.google.android.gms.nearby.connection.ConnectionInfo;
@@ -23,23 +29,33 @@ import com.google.android.gms.nearby.connection.Payload;
 import com.google.android.gms.nearby.connection.PayloadCallback;
 import com.google.android.gms.nearby.connection.PayloadTransferUpdate;
 
+import org.opencv.core.CvType;
 import org.opencv.core.Mat;
+import org.opencv.core.Size;
+import org.opencv.imgproc.Imgproc;
 
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 public class Discovery extends Device{
-
+    public static final int PICK_IMAGE_REQUEST = 1;
     private Set<String> allDevicesIds = new ArraySet();
-    private Set<String> sentMessageDeviceIds = new ArraySet<>();
+    private Map<String,Integer> devicesUsedInCurrentCommunication;
+    private Map<Integer, Mat> partsNeededFromImage;
+    private Mat imageFromGallery;
 
-    public Discovery(ConnectionsClient connectionsClient){
-        super(connectionsClient);
+    public Discovery(Activity activity, ConnectionsClient connectionsClient){
+        super(activity, connectionsClient);
     }
 
     public void start() {
+        activity.setContentView(R.layout.activity_discover_main);
+        initializeUiElements();
+
         System.out.println("STTTTTTTTTTTTART DISC");
         DiscoveryOptions discoveryOptions = new DiscoveryOptions.Builder().setStrategy(STRATEGY).build();
         connectionsClient.startDiscovery(
@@ -56,9 +72,27 @@ public class Discovery extends Device{
                         });
     }
 
-    public void sendMessage(Mat image) {
-        List<Mat> divideImages = ImageProcessing.divideImages(image,allDevicesIds.size());
+    public void setImageFromGallery(Mat imageFromGallery){
+        Mat resizedMat = new Mat(500, 500, CvType.CV_8UC4);
+        Imgproc.resize(imageFromGallery, resizedMat, new Size(500, 500), 0, 0, Imgproc.INTER_LINEAR);
+        /////////////// MUST RESIZE. FIND MAX SIZE FOR PAYLOAD
 
+        this.imageFromGallery = resizedMat;
+    }
+
+    private void sendMessage(Mat image) {
+        /// Simulate multiple devices when we have only one
+        int numberOfParts = 3;
+        initializeImageValues(numberOfParts);
+
+        List<String> allDevicesArray = new ArrayList<>(allDevicesIds);
+        String endpointId = allDevicesArray.get(0);
+
+        sendMessageToSingleEndpoint(endpointId, 0);
+
+        /*
+        //// Real dividing and sending images. Do not delete. Will be used in future
+        List<Mat> divideImages = ImageProcessing.divideImages(imageFromGallery,allDevicesIds.size());
         List<String> allDevicesArray = new ArrayList<>(allDevicesIds);
         int allDevicesArrayLength = allDevicesArray.size();
 
@@ -66,11 +100,26 @@ public class Discovery extends Device{
             String deviceId = allDevicesArray.get(i);
             Payload payload = convertMatToPayload(divideImages.get(i));
 
-            sentMessageDeviceIds.add(deviceId);
+            devicesUsedInCurrentCommunication.put(deviceId, i);
             connectionsClient.sendPayload(deviceId, payload);
-        }
+        }*/
     }
 
+    private void sendMessageToSingleEndpoint(String endpointId, int imagePart){
+        devicesUsedInCurrentCommunication.put(endpointId,imagePart);
+        Payload payload = convertMatToPayload(partsNeededFromImage.get(imagePart));
+        connectionsClient.sendPayload(endpointId, payload);
+    }
+
+    private void initializeImageValues(int numberOfParts){
+        List<Mat> divideImages = ImageProcessing.divideImages(imageFromGallery,numberOfParts);
+        this.partsNeededFromImage =  new HashMap<>();
+        for(int i=0;i<numberOfParts;i++){
+            this.partsNeededFromImage.put(i,divideImages.get(i));
+        }
+
+        this.devicesUsedInCurrentCommunication = new HashMap<>();
+    }
 
     public void disconnect() {
         allDevicesIds.stream().forEach((deviceId)->{
@@ -143,15 +192,25 @@ public class Discovery extends Device{
     private final PayloadCallback payloadCallback = new PayloadCallback() {
         @Override
         public void onPayloadReceived(String endpointId, Payload payload) {
-            // We received a payload!
-            Mat receivedImage = Common.convertPayloadToMat(payload, 500, 500);
+            Toast.makeText(activity, "Received", Toast.LENGTH_SHORT).show();
 
-            sentMessageDeviceIds.remove(endpointId); ///// This may be a problem. IF we remove an id from different threads, we may have inconsticency.
-            if(sentMessageDeviceIds.isEmpty()){
-                System.out.println("We have all parts");
+            Integer imagePartIndex = devicesUsedInCurrentCommunication.get(endpointId);
+            Mat receivedMat = convertPayloadToMat(payload);
+
+            System.out.println("Zoicanel RECEIVER DISCOVERY "+imagePartIndex);
+            imageFromGallery = replaceMat(imageFromGallery, receivedMat, imagePartIndex);
+            ImageView imageView = activity.findViewById(R.id.imageView); ////////// RECEIVES JUST 499/499/1
+            Bitmap receivedImageBitmap = convertImageToBitmap(imageFromGallery);
+            imageView.setImageBitmap(receivedImageBitmap);
+
+            devicesUsedInCurrentCommunication.remove(endpointId); ///// This may be a problem. IF we remove an id from different threads, we may have inconsticency.
+            partsNeededFromImage.remove(imagePartIndex);
+
+            if(!partsNeededFromImage.isEmpty()){
+                Integer firstNeededPartIndex = partsNeededFromImage.keySet().iterator().next();
+                System.out.println("Zoicanel"+firstNeededPartIndex);
+                sendMessageToSingleEndpoint(endpointId,firstNeededPartIndex);
             }
-
-            onPayloadReceivedCallbackFunction.accept(receivedImage);
         }
 
         @Override
@@ -161,8 +220,27 @@ public class Discovery extends Device{
         }
     };
 
+    /////////////// UI Elements
+
+    private void initializeUiElements(){
+        initializeSendButton();
+    }
+
+    private void initializeSendButton(){
+        Button sendButton = activity.findViewById(R.id.button);
+        sendButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                sendMessage(imageFromGallery);
+
+                ImageView imageView = activity.findViewById(R.id.imageView);
+                imageView.setImageBitmap(convertImageToBitmap(imageFromGallery));
+            }
+        });
+    }
+
     private void updateAllDevicesTextView(){
-        TextView allDevicesTextView = findViewById(R.id.allDevices);
+        TextView allDevicesTextView = activity.findViewById(R.id.allDevices);
 
         String allDevicesIdString = "";
         for (String s : allDevicesIds)

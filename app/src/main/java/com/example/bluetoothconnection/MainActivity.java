@@ -1,5 +1,6 @@
 package com.example.bluetoothconnection;
 
+import static com.example.bluetoothconnection.communication.Discovery.PICK_IMAGE_REQUEST;
 import static com.example.bluetoothconnection.opencv.ImageProcessing.convertImageToBitmap;
 import static com.example.bluetoothconnection.opencv.ImageProcessing.convertInputStreamToMat;
 
@@ -8,8 +9,12 @@ import com.example.bluetoothconnection.communication.Device;
 import com.example.bluetoothconnection.communication.Discovery;
 import com.example.bluetoothconnection.permissions.Permissions;
 
+import androidx.activity.result.ActivityResult;
+import androidx.activity.result.ActivityResultCallback;
 import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.PickVisualMediaRequest;
 import androidx.activity.result.contract.ActivityResultContracts;
+import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 
 import android.app.Activity;
@@ -22,6 +27,7 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.provider.MediaStore;
+import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.ImageView;
@@ -34,14 +40,16 @@ import com.google.android.gms.nearby.connection.*;
 import org.opencv.android.OpenCVLoader;
 import org.opencv.core.Mat;
 
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.List;
 
 public class MainActivity extends AppCompatActivity {
-      private ConnectionsClient connectionsClient;
-      Device device;
+    private ConnectionsClient connectionsClient;
+    Device device;
 
-    ImageView imageView;
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode,permissions,grantResults);
@@ -69,26 +77,18 @@ public class MainActivity extends AppCompatActivity {
         // Permission is already granted
         System.out.println("GRRRRRRRRRRRR  GRANTED");
 
-        boolean isAdvertise = Build.MODEL.equals("Pixel 7");
-        device = isAdvertise ? new Advertise(connectionsClient) : new Discovery(connectionsClient);
-        device.setOnPayloadReceivedCallbackFunction((image)-> {
-            Bitmap bitmap = convertImageToBitmap(image);
+        boolean isAdvertise = !Build.MODEL.equals("Pixel 7");
+        device = isAdvertise ? new Advertise(this, connectionsClient) : new Discovery(this, connectionsClient);
 
-            imageView.setImageBitmap(bitmap);
-        });
-
+        device.start();
         if(isAdvertise) {
             // Start advertising the endpoint
             Toast.makeText(MainActivity.this, "Start adverting", Toast.LENGTH_SHORT).show();  ////////// !!!!!!! Refactor this IF. Maybe make method in class Advertise/Discovery
         } else {
+            initializeUploadButton();
             // Start discovering nearby endpoints
             Toast.makeText(MainActivity.this, "Start discovery", Toast.LENGTH_SHORT).show();
         }
-        device.start();
-
-        setContentView(R.layout.activity_main);
-
-        initializeUiElements();
     }
 
     private float getDeviceFreeMemory(){
@@ -98,63 +98,47 @@ public class MainActivity extends AppCompatActivity {
         return memoryInfo.availMem;
     }
 
-    private void initializeUiElements(){
-        initializeSendButton();
-        initializeUploadPhotoButton();
-    }
-
-    private void initializeSendButton(){
-        Button sendButton = findViewById(R.id.button);
-        sendButton.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                TextView insertedText = findViewById(R.id.editTextText);
-                System.out.println(insertedText);
-                //device.sendMessage(insertedText.getText().toString());
-            }
-        });
-    }
-
-    private void initializeUploadPhotoButton(){
-        ActivityResultLauncher<Intent> processingImageLauncher = generateActivityLauncherForProcessedImage();
-
-        Button uploadPhotoButton = findViewById(R.id.uploadPhoto);
-        uploadPhotoButton.setOnClickListener(v -> {
-            Intent intent = new Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI);
-            processingImageLauncher.launch(intent);
-        });
-    }
-    private ActivityResultLauncher<Intent> generateActivityLauncherForProcessedImage(){
-        imageView = findViewById(R.id.imageView);
-        return registerForActivityResult(
+    private void initializeUploadButton(){
+        ActivityResultLauncher<Intent> resultLauncher = registerForActivityResult(
                 new ActivityResultContracts.StartActivityForResult(),
-                result -> {
-                    if (result.getResultCode() == Activity.RESULT_OK && result.getData() != null) {
+                new ActivityResultCallback<ActivityResult>() {
+                    @Override
+                    public void onActivityResult(ActivityResult result) {
                         Uri imageUri = result.getData().getData();
+                        ImageView imageView = findViewById(R.id.imageView);
+
+                        imageView.setImageURI(imageUri);
 
                         try {
                             InputStream inputStream = getContentResolver().openInputStream(imageUri);
                             if (inputStream != null) {
-                                // Read the image data and convert it to a Mat object
-                                Mat originalImage = convertInputStreamToMat(inputStream);
+                                Mat originalImage = convertInputStreamToMat(inputStream); ////////// Maybe find a simple solution for converting from Uri to mat (not extra step Inputstream)
 
-                                // Convert the modified image back to a Bitmap for display or further use
-                                // Bitmap processedBitmap = Bitmap.createBitmap(originalImage.cols(), originalImage.rows(), Bitmap.Config.ARGB_8888);
-                                // Utils.matToBitmap(originalImage, processedBitmap);
-
-                                device.sendMessage(originalImage);
+                                ((Discovery)device).setImageFromGallery(originalImage);
                             }
 
                             inputStream.close();
                         } catch (IOException e) {
                             e.printStackTrace();
                         }
-                        System.out.println("GRRRRRRRRRRRRRRRR Image URI"+result.getData());
-                        // Handle the selected photo (e.g., upload it to a server)
+
+                        Toast.makeText(MainActivity.this,"Picked imaged", Toast.LENGTH_SHORT).show();
                     }
                 }
         );
+
+        Button uploadButton = findViewById(R.id.uploadPhoto);
+        uploadButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+
+                Intent intent = new Intent(MediaStore.ACTION_PICK_IMAGES);
+                resultLauncher.launch(intent);
+                //sendMessage(imageFromGallery);
+            }
+        });
     }
+
 
     @Override
     protected void onStop() {

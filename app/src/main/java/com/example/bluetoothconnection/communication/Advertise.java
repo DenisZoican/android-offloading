@@ -1,5 +1,7 @@
 package com.example.bluetoothconnection.communication;
 
+import static com.example.bluetoothconnection.communication.Common.PAYLOAD_TYPE_IMAGE;
+import static com.example.bluetoothconnection.communication.Common.PAYLOAD_TYPE_STRING;
 import static com.example.bluetoothconnection.communication.Common.SERVICE_ID;
 import static com.example.bluetoothconnection.communication.Common.STRATEGY;
 import static com.example.bluetoothconnection.communication.Common.convertMatToPayload;
@@ -28,13 +30,14 @@ import org.opencv.core.Mat;
 
 public class Advertise extends Device {
     private String discoveryDeviceId; ///// Rename it later
+    private String payloadType;
     public Advertise(Activity activity, ConnectionsClient connectionsClient){
         super(activity, connectionsClient);
     }
 
     public void start(){
         activity.setContentView(R.layout.activity_advertise_main);
-        initializeSendButton();
+        initializeUiElements();
 
         System.out.println("BEGIN ADVER");
         AdvertisingOptions advertisingOptions =
@@ -55,7 +58,15 @@ public class Advertise extends Device {
 
     public void sendMessage(Mat image) {
         Payload processedPayload = convertMatToPayload(image);
+        payloadType = PAYLOAD_TYPE_IMAGE;
         connectionsClient.sendPayload(discoveryDeviceId, processedPayload);
+    }
+    public void sendBatteryUsage(String batteryMessage) {
+        System.out.println("Send batteryMessage from advertise");
+        byte[] toSend = batteryMessage.getBytes();
+        Payload payload = Payload.fromBytes(toSend);
+        payloadType = PAYLOAD_TYPE_STRING;
+        connectionsClient.sendPayload(discoveryDeviceId, payload);
     }
     public void disconnect() {
         connectionsClient.disconnectFromEndpoint(discoveryDeviceId);
@@ -148,12 +159,27 @@ public class Advertise extends Device {
         allDevicesTextView.setText(discoveryDeviceId);
     }
 
+    private void initializeUiElements(){
+        initializeSendButton();
+        initializeSendBatteryButton();
+    }
+
     private void initializeSendButton(){
         Button sendButton = activity.findViewById(R.id.button);
         sendButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 connectionsClient.sendPayload(discoveryDeviceId, Payload.fromBytes("Hello".getBytes()));
+            }
+        });
+    }
+
+    private void initializeSendBatteryButton() {
+        Button sendButton = activity.findViewById(R.id.buttonBattery);
+        sendButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                sendBatteryUsage("Baterie:50%");
             }
         });
     }

@@ -4,22 +4,18 @@ import static com.example.bluetoothconnection.utils.Common.getUniqueName;
 
 import android.app.Activity;
 
-import androidx.appcompat.app.AppCompatActivity;
-
 import com.google.android.gms.nearby.connection.ConnectionsClient;
 
 import org.opencv.core.Mat;
 
-import java.util.EventListener;
-import java.util.Observable;
 import java.util.function.Consumer;
-import java.util.function.Function;
 
 public abstract class Device {
 
     Activity activity;
     final ConnectionsClient connectionsClient;
     final String uniqueName = getUniqueName();
+    static String payloadType = null;
 
     public Consumer<Mat> onPayloadReceivedCallbackFunction;
 

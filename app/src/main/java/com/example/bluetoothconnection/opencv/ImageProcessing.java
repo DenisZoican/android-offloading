@@ -33,13 +33,18 @@ public class ImageProcessing {
     public static Mat replaceMat(Mat destMat, Mat subMat, int beginRowIndex){
         Mat resultMat = destMat.clone();
 
+        int destMatHeight = destMat.height();
+
         int subMatWidth = subMat.width();
         int subMatHeight = subMat.height();
 
-
-        for(int i=beginRowIndex;i<beginRowIndex+subMatHeight;i++){
+        int heightOffset = beginRowIndex*subMatHeight;
+        System.out.println("Zoicanel Limits are "+destMatHeight+"--"+destMat.width());
+        System.out.println("Zoicanel replace "+(beginRowIndex*subMatHeight)+"---"+(beginRowIndex*subMatHeight+subMatHeight));
+        for(int i=heightOffset;i<heightOffset+subMatHeight && i<destMatHeight;i++){
             for(int j=0;j<subMatWidth;j++){
-                double grayScaleValue = subMat.get(i - beginRowIndex, j)[0];
+                System.out.println("Zoicanel "+i+"--"+j);
+                double grayScaleValue = subMat.get(i - heightOffset, j)[0];
                 double[] newPixel = new double[]{grayScaleValue, grayScaleValue, grayScaleValue, 255.0};
 
                 resultMat.put(i,j,newPixel);

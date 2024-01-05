@@ -36,6 +36,7 @@ import org.opencv.imgproc.Imgproc;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -43,7 +44,8 @@ import java.util.Set;
 public class Discovery extends Device{
     public static final int PICK_IMAGE_REQUEST = 1;
     private Set<String> allDevicesIds = new ArraySet();
-    private Map<String,Integer> devicesUsedInCurrentCommunication = new HashMap<>();
+    private Map<String,Integer> devicesUsedInCurrentCommunication;
+    private Map<Integer, Mat> partsNeededFromImage;
     private Mat imageFromGallery;
 
     public Discovery(Activity activity, ConnectionsClient connectionsClient){
@@ -73,13 +75,23 @@ public class Discovery extends Device{
     public void setImageFromGallery(Mat imageFromGallery){
         Mat resizedMat = new Mat(500, 500, CvType.CV_8UC4);
         Imgproc.resize(imageFromGallery, resizedMat, new Size(500, 500), 0, 0, Imgproc.INTER_LINEAR);
-
         /////////////// MUST RESIZE. FIND MAX SIZE FOR PAYLOAD
 
         this.imageFromGallery = resizedMat;
     }
 
-    public void sendMessage(Mat image) {
+    private void sendMessage(Mat image) {
+        /// Simulate multiple devices when we have only one
+        int numberOfParts = 3;
+        initializeImageValues(numberOfParts);
+
+        List<String> allDevicesArray = new ArrayList<>(allDevicesIds);
+        String endpointId = allDevicesArray.get(0);
+
+        sendMessageToSingleEndpoint(endpointId, 0);
+
+        /*
+        //// Real dividing and sending images. Do not delete. Will be used in future
         List<Mat> divideImages = ImageProcessing.divideImages(imageFromGallery,allDevicesIds.size());
         List<String> allDevicesArray = new ArrayList<>(allDevicesIds);
         int allDevicesArrayLength = allDevicesArray.size();
@@ -90,9 +102,24 @@ public class Discovery extends Device{
 
             devicesUsedInCurrentCommunication.put(deviceId, i);
             connectionsClient.sendPayload(deviceId, payload);
-        }
+        }*/
     }
 
+    private void sendMessageToSingleEndpoint(String endpointId, int imagePart){
+        devicesUsedInCurrentCommunication.put(endpointId,imagePart);
+        Payload payload = convertMatToPayload(partsNeededFromImage.get(imagePart));
+        connectionsClient.sendPayload(endpointId, payload);
+    }
+
+    private void initializeImageValues(int numberOfParts){
+        List<Mat> divideImages = ImageProcessing.divideImages(imageFromGallery,numberOfParts);
+        this.partsNeededFromImage =  new HashMap<>();
+        for(int i=0;i<numberOfParts;i++){
+            this.partsNeededFromImage.put(i,divideImages.get(i));
+        }
+
+        this.devicesUsedInCurrentCommunication = new HashMap<>();
+    }
 
     public void disconnect() {
         allDevicesIds.stream().forEach((deviceId)->{
@@ -165,19 +192,24 @@ public class Discovery extends Device{
     private final PayloadCallback payloadCallback = new PayloadCallback() {
         @Override
         public void onPayloadReceived(String endpointId, Payload payload) {
-            System.out.println("RECEIVER DISCOVERY");
             Toast.makeText(activity, "Received", Toast.LENGTH_SHORT).show();
 
+            Integer imagePartIndex = devicesUsedInCurrentCommunication.get(endpointId);
             Mat receivedMat = convertPayloadToMat(payload);
 
-            imageFromGallery = replaceMat(imageFromGallery, receivedMat, devicesUsedInCurrentCommunication.get(endpointId));
+            System.out.println("Zoicanel RECEIVER DISCOVERY "+imagePartIndex);
+            imageFromGallery = replaceMat(imageFromGallery, receivedMat, imagePartIndex);
             ImageView imageView = activity.findViewById(R.id.imageView); ////////// RECEIVES JUST 499/499/1
             Bitmap receivedImageBitmap = convertImageToBitmap(imageFromGallery);
             imageView.setImageBitmap(receivedImageBitmap);
 
             devicesUsedInCurrentCommunication.remove(endpointId); ///// This may be a problem. IF we remove an id from different threads, we may have inconsticency.
-            if(devicesUsedInCurrentCommunication.isEmpty()){
-                System.out.println("We have all parts");
+            partsNeededFromImage.remove(imagePartIndex);
+
+            if(!partsNeededFromImage.isEmpty()){
+                Integer firstNeededPartIndex = partsNeededFromImage.keySet().iterator().next();
+                System.out.println("Zoicanel"+firstNeededPartIndex);
+                sendMessageToSingleEndpoint(endpointId,firstNeededPartIndex);
             }
         }
 

@@ -1,18 +1,18 @@
 package com.example.bluetoothconnection.communication;
 
-import static com.example.bluetoothconnection.communication.Common.PAYLOAD_TYPE_IMAGE;
-import static com.example.bluetoothconnection.communication.Common.PAYLOAD_TYPE_STRING;
-import static com.example.bluetoothconnection.communication.Common.SERVICE_ID;
-import static com.example.bluetoothconnection.communication.Common.STRATEGY;
-import static com.example.bluetoothconnection.communication.Common.convertMatToPayload;
-import static com.example.bluetoothconnection.communication.Common.convertPayloadToMat;
+import static com.example.bluetoothconnection.communication.Utils.Common.PAYLOAD_TYPE_IMAGE;
+import static com.example.bluetoothconnection.communication.Utils.Common.SERVICE_ID;
+import static com.example.bluetoothconnection.communication.Utils.Common.STRATEGY;
+import static com.example.bluetoothconnection.communication.Utils.Common.convertMatToPayload;
+import static com.example.bluetoothconnection.communication.Utils.Common.convertPayloadToMat;
+import static com.example.bluetoothconnection.communication.Utils.Common.createPayloadFromMat;
+import static com.example.bluetoothconnection.communication.Utils.Common.extractDataFromPayload;
 import static com.example.bluetoothconnection.opencv.ImageProcessing.convertImageToBitmap;
 import static com.example.bluetoothconnection.opencv.ImageProcessing.replaceMat;
 import static com.example.bluetoothconnection.utils.EncryptionUtils.SECRET_AUTHENTICATION_TOKEN;
 
 import android.app.Activity;
 import android.graphics.Bitmap;
-import android.net.Uri;
 import android.util.ArraySet;
 import android.view.View;
 import android.widget.Button;
@@ -21,6 +21,8 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import com.example.bluetoothconnection.R;
+import com.example.bluetoothconnection.communication.Utils.PayloadDataEntities.PayloadData;
+import com.example.bluetoothconnection.communication.Utils.PayloadDataEntities.PayloadMatData;
 import com.example.bluetoothconnection.opencv.ImageProcessing;
 import com.example.bluetoothconnection.utils.EncryptionUtils;
 import com.google.android.gms.nearby.connection.ConnectionInfo;
@@ -44,11 +46,8 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
-import java.net.MalformedURLException;
-import java.net.ProtocolException;
 import java.net.URL;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -140,7 +139,7 @@ public class Discovery extends Device{
     private void sendMessageToSingleEndpoint(String endpointId, int imagePart){
         devicesUsedInCurrentCommunication.put(endpointId,imagePart);
         payloadType = PAYLOAD_TYPE_IMAGE;
-        Payload payload = convertMatToPayload(partsNeededFromImage.get(imagePart));
+        Payload payload = createPayloadFromMat(partsNeededFromImage.get(imagePart));
         connectionsClient.sendPayload(endpointId, payload);
     }
 
@@ -243,23 +242,13 @@ public class Discovery extends Device{
         public void onPayloadReceived(String endpointId, Payload payload) {
             Toast.makeText(activity, "Received", Toast.LENGTH_SHORT).show();
 
-            if(payloadType == PAYLOAD_TYPE_IMAGE) {
-                Integer imagePartIndex = devicesUsedInCurrentCommunication.get(endpointId);
-                Mat receivedMat = convertPayloadToMat(payload);
-
-                System.out.println("Zoicanel RECEIVER DISCOVERY " + imagePartIndex);
-                matImageFromGallery = replaceMat(matImageFromGallery, receivedMat, imagePartIndex);
-                ImageView imageView = activity.findViewById(R.id.imageView); ////////// RECEIVES JUST 499/499/1
-                Bitmap receivedImageBitmap = convertImageToBitmap(matImageFromGallery);
-                imageView.setImageBitmap(receivedImageBitmap);
-
-                devicesUsedInCurrentCommunication.remove(endpointId); ///// This may be a problem. IF we remove an id from different threads, we may have inconsticency.
-                partsNeededFromImage.remove(imagePartIndex);
-
-                if (!partsNeededFromImage.isEmpty()) {
-                    Integer firstNeededPartIndex = partsNeededFromImage.keySet().iterator().next();
-                    System.out.println("Zoicanel" + firstNeededPartIndex);
-                    sendMessageToSingleEndpoint(endpointId, firstNeededPartIndex);
+            if(payloadType == PAYLOAD_TYPE_IMAGE) { /////// Delete this if
+                PayloadData payloadData = extractDataFromPayload(payload);
+                switch (payloadData.getMessageContentType()){
+                    case Image:
+                        Integer imagePartIndex = devicesUsedInCurrentCommunication.get(endpointId);
+                        matReceivedBehavior((PayloadMatData)payloadData, endpointId, imagePartIndex);
+                        break;
                 }
             } else {//if(payloadType == PAYLOAD_TYPE_STRING) {
                 batteryUsage = new String(payload.asBytes());
@@ -277,6 +266,24 @@ public class Discovery extends Device{
         }
     };
 
+    private void matReceivedBehavior(PayloadMatData payloadMatData, String endpointId, int imagePartIndex){
+        Mat receivedMat = payloadMatData.getImage();
+
+        System.out.println("Zoicanel RECEIVER DISCOVERY " + imagePartIndex);
+        matImageFromGallery = replaceMat(matImageFromGallery, receivedMat, imagePartIndex);
+        ImageView imageView = activity.findViewById(R.id.imageView); ////////// RECEIVES JUST 499/499/1
+        Bitmap receivedImageBitmap = convertImageToBitmap(matImageFromGallery);
+        imageView.setImageBitmap(receivedImageBitmap);
+
+        devicesUsedInCurrentCommunication.remove(endpointId); ///// This may be a problem. IF we remove an id from different threads, we may have inconsticency.
+        partsNeededFromImage.remove(imagePartIndex);
+
+        if (!partsNeededFromImage.isEmpty()) {
+            Integer firstNeededPartIndex = partsNeededFromImage.keySet().iterator().next();
+            System.out.println("Zoicanel" + firstNeededPartIndex);
+            sendMessageToSingleEndpoint(endpointId, firstNeededPartIndex);
+        }
+    }
     private void uploadImageToAPI() {
         try {
             File imageFile = new File(urlPathImageFromGallery);

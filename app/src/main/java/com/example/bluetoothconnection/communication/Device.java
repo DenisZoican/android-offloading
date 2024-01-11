@@ -12,9 +12,13 @@ import com.google.android.gms.nearby.connection.ConnectionsClient;
 
 import org.opencv.core.Mat;
 
+import java.security.KeyPair;
+import java.security.KeyPairGenerator;
 import java.util.function.Consumer;
 
 public abstract class Device {
+    // Key pair for signing and verifying messages
+    private KeyPair keyPair;
 
     Activity activity;
     final ConnectionsClient connectionsClient;
@@ -26,6 +30,8 @@ public abstract class Device {
     public Device(Activity activity, ConnectionsClient connectionsClient){
         this.activity = activity;
         this.connectionsClient = connectionsClient;
+
+        generateKeyPair();
     }
 
     public void setOnPayloadReceivedCallbackFunction(Consumer<Mat> onPayloadReceivedCallbackFunction){
@@ -39,4 +45,12 @@ public abstract class Device {
     abstract public void start() throws Exception;
     abstract public void disconnect();
     abstract public void destroy();
+    private void generateKeyPair() {
+        try {
+            KeyPairGenerator keyPairGenerator = KeyPairGenerator.getInstance("RSA");
+            keyPair = keyPairGenerator.generateKeyPair();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
 }

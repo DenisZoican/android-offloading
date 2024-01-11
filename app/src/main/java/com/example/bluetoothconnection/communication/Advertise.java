@@ -1,11 +1,11 @@
 package com.example.bluetoothconnection.communication;
 
-import static com.example.bluetoothconnection.communication.Common.PAYLOAD_TYPE_IMAGE;
-import static com.example.bluetoothconnection.communication.Common.PAYLOAD_TYPE_STRING;
-import static com.example.bluetoothconnection.communication.Common.SERVICE_ID;
-import static com.example.bluetoothconnection.communication.Common.STRATEGY;
-import static com.example.bluetoothconnection.communication.Common.convertMatToPayload;
-import static com.example.bluetoothconnection.communication.Common.convertPayloadToMat;
+import static com.example.bluetoothconnection.communication.Utils.Common.PAYLOAD_TYPE_IMAGE;
+import static com.example.bluetoothconnection.communication.Utils.Common.PAYLOAD_TYPE_STRING;
+import static com.example.bluetoothconnection.communication.Utils.Common.SERVICE_ID;
+import static com.example.bluetoothconnection.communication.Utils.Common.STRATEGY;
+import static com.example.bluetoothconnection.communication.Utils.Common.createPayloadFromMat;
+import static com.example.bluetoothconnection.communication.Utils.Common.extractDataFromPayload;
 import static com.example.bluetoothconnection.opencv.ImageProcessing.convertImageToBitmap;
 import static com.example.bluetoothconnection.opencv.ImageProcessing.processImage;
 import static com.example.bluetoothconnection.utils.EncryptionUtils.SECRET_AUTHENTICATION_TOKEN;
@@ -18,6 +18,8 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import com.example.bluetoothconnection.R;
+import com.example.bluetoothconnection.communication.Utils.PayloadDataEntities.PayloadData;
+import com.example.bluetoothconnection.communication.Utils.PayloadDataEntities.PayloadMatData;
 import com.example.bluetoothconnection.utils.EncryptionUtils;
 import com.google.android.gms.nearby.connection.AdvertisingOptions;
 import com.google.android.gms.nearby.connection.ConnectionInfo;
@@ -61,7 +63,7 @@ public class Advertise extends Device {
     }
 
     public void sendMessage(Mat image) {
-        Payload processedPayload = convertMatToPayload(image);
+        Payload processedPayload = createPayloadFromMat(image);
         payloadType = PAYLOAD_TYPE_IMAGE;
         connectionsClient.sendPayload(discoveryDeviceId, processedPayload);
     }
@@ -126,19 +128,12 @@ public class Advertise extends Device {
             System.out.println("DA DA");
             Toast.makeText(activity, "Received", Toast.LENGTH_SHORT).show();
 
-            Mat receivedMat = convertPayloadToMat(payload);
-            try {
-                Thread.sleep(5000);
-            } catch (InterruptedException e) {
-                throw new RuntimeException(e);
+            PayloadData payloadData = extractDataFromPayload(payload);
+            switch (payloadData.getMessageContentType()){
+                case Image:
+                    matReceivedBehavior((PayloadMatData)payloadData);
+                    break;
             }
-
-            Mat processedMat = processImage(receivedMat);
-
-            ImageView imageView = activity.findViewById(R.id.imageView);
-            imageView.setImageBitmap(convertImageToBitmap(receivedMat));
-
-            sendMessage(processedMat);
 
             //Mat receivedImage = convertPayloadToMat(payload,500,500); ////////////// Dimensions are false 100%
 
@@ -163,6 +158,23 @@ public class Advertise extends Device {
             // Payload transfer status updated.
         }
     };
+
+    private void matReceivedBehavior(PayloadMatData payloadMatData){
+        Mat receivedMat = payloadMatData.getImage();
+
+        try {
+            Thread.sleep(5000);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+
+        Mat processedMat = processImage(receivedMat);
+
+        ImageView imageView = activity.findViewById(R.id.imageView);
+        imageView.setImageBitmap(convertImageToBitmap(receivedMat));
+
+        sendMessage(processedMat);
+    }
 
     private void updateAllDevicesTextView(){
         TextView allDevicesTextView = activity.findViewById(R.id.allDevices);

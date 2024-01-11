@@ -6,6 +6,7 @@ import static com.example.bluetoothconnection.communication.Common.convertMatToP
 import static com.example.bluetoothconnection.communication.Common.convertPayloadToMat;
 import static com.example.bluetoothconnection.opencv.ImageProcessing.convertImageToBitmap;
 import static com.example.bluetoothconnection.opencv.ImageProcessing.processImage;
+import static com.example.bluetoothconnection.utils.EncryptionUtils.SECRET_AUTHENTICATION_TOKEN;
 
 import android.app.Activity;
 import android.view.View;
@@ -15,6 +16,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import com.example.bluetoothconnection.R;
+import com.example.bluetoothconnection.utils.EncryptionUtils;
 import com.google.android.gms.nearby.connection.AdvertisingOptions;
 import com.google.android.gms.nearby.connection.ConnectionInfo;
 import com.google.android.gms.nearby.connection.ConnectionLifecycleCallback;
@@ -32,7 +34,7 @@ public class Advertise extends Device {
         super(activity, connectionsClient);
     }
 
-    public void start(){
+    public void start() throws Exception {
         activity.setContentView(R.layout.activity_advertise_main);
         initializeSendButton();
 
@@ -40,11 +42,13 @@ public class Advertise extends Device {
         AdvertisingOptions advertisingOptions =
             new AdvertisingOptions.Builder().setStrategy(STRATEGY).build();
 
-        connectionsClient.startAdvertising(this.uniqueName, SERVICE_ID, connectionLifecycleCallback, advertisingOptions)
+        String authenticationTokenAsName = EncryptionUtils.encrypt(SECRET_AUTHENTICATION_TOKEN);
+
+        connectionsClient.startAdvertising(authenticationTokenAsName, SERVICE_ID, connectionLifecycleCallback, advertisingOptions)
                 .addOnSuccessListener(
                         (Void unused) -> {
                             // We're advertising!
-                            System.out.println("SUCCESS ADVER "+this.uniqueName);
+                            System.out.println("SUCCESS ADVER ");
                         })
                 .addOnFailureListener(
                         (Exception e) -> {
@@ -71,8 +75,15 @@ public class Advertise extends Device {
                 public void onConnectionInitiated(String endpointId, ConnectionInfo connectionInfo) {
                     System.out.println("GRRRRRR INITIATED");
                     // Automatically accept the connection on both devices.
+                    try {
+                        if(checkAuthenticationToken(connectionInfo.getEndpointName())){
+                            connectionsClient.acceptConnection(endpointId, payloadCallback);
+                        }
+                    } catch (Exception e) {
+                        throw new RuntimeException(e);
+                    }
+
                     connectionsClient.acceptConnection(endpointId, payloadCallback);
-                    // Store the endpoint ID for later use.
                 }
 
                 @Override

@@ -1,11 +1,13 @@
 package com.example.bluetoothconnection.communication;
 
 import static com.example.bluetoothconnection.utils.Common.getUniqueName;
+import static com.example.bluetoothconnection.utils.EncryptionUtils.SECRET_AUTHENTICATION_TOKEN;
 
 import android.app.Activity;
 
 import androidx.appcompat.app.AppCompatActivity;
 
+import com.example.bluetoothconnection.utils.EncryptionUtils;
 import com.google.android.gms.nearby.connection.ConnectionsClient;
 
 import org.opencv.core.Mat;
@@ -19,7 +21,6 @@ public abstract class Device {
 
     Activity activity;
     final ConnectionsClient connectionsClient;
-    final String uniqueName = getUniqueName();
 
     public Consumer<Mat> onPayloadReceivedCallbackFunction;
 
@@ -32,7 +33,11 @@ public abstract class Device {
         this.onPayloadReceivedCallbackFunction = onPayloadReceivedCallbackFunction;
     }
 
-    abstract public void start();
+    public boolean checkAuthenticationToken(String authenticationToken) throws Exception {
+        return SECRET_AUTHENTICATION_TOKEN.equals(EncryptionUtils.decrypt(authenticationToken));
+    }
+
+    abstract public void start() throws Exception;
     abstract public void disconnect();
     abstract public void destroy();
 }

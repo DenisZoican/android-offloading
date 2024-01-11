@@ -12,6 +12,10 @@ import org.opencv.imgcodecs.Imgcodecs;
 public class Common {
     public static final Strategy STRATEGY = Strategy.P2P_STAR; //// Use P2P_CLUSTER because in START the central one is the advertiser.
     public static final String SERVICE_ID = "com.example.nearbytest";
+
+    //o sa le fac un enum
+    public static final String PAYLOAD_TYPE_IMAGE = "image";
+    public static final String PAYLOAD_TYPE_STRING= "message";
     public static Payload convertMatToPayload(Mat image){
         // Convert the Mat to a byte array
         MatOfByte matOfByte = new MatOfByte();

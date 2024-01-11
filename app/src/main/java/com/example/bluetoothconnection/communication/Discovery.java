@@ -1,5 +1,7 @@
 package com.example.bluetoothconnection.communication;
 
+import static com.example.bluetoothconnection.communication.Common.PAYLOAD_TYPE_IMAGE;
+import static com.example.bluetoothconnection.communication.Common.PAYLOAD_TYPE_STRING;
 import static com.example.bluetoothconnection.communication.Common.SERVICE_ID;
 import static com.example.bluetoothconnection.communication.Common.STRATEGY;
 import static com.example.bluetoothconnection.communication.Common.convertMatToPayload;
@@ -46,6 +48,7 @@ import java.net.MalformedURLException;
 import java.net.ProtocolException;
 import java.net.URL;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -54,6 +57,8 @@ import java.util.Set;
 public class Discovery extends Device{
     public static final int PICK_IMAGE_REQUEST = 1;
     private Set<String> allDevicesIds = new ArraySet();
+    private String payloadType;
+    private String batteryUsage = new String();
     private Map<String,Integer> devicesUsedInCurrentCommunication;
     private Map<Integer, Mat> partsNeededFromImage;
     private Mat matImageFromGallery;
@@ -91,6 +96,7 @@ public class Discovery extends Device{
         Mat resizedMat = new Mat(500, 500, CvType.CV_8UC4);
         Imgproc.resize(matImageFromGallery, resizedMat, new Size(500, 500), 0, 0, Imgproc.INTER_LINEAR);
         /////////////// MUST RESIZE. FIND MAX SIZE FOR PAYLOAD
+        payloadType = PAYLOAD_TYPE_IMAGE;
 
         this.matImageFromGallery = resizedMat;
     }
@@ -133,6 +139,7 @@ public class Discovery extends Device{
 
     private void sendMessageToSingleEndpoint(String endpointId, int imagePart){
         devicesUsedInCurrentCommunication.put(endpointId,imagePart);
+        payloadType = PAYLOAD_TYPE_IMAGE;
         Payload payload = convertMatToPayload(partsNeededFromImage.get(imagePart));
         connectionsClient.sendPayload(endpointId, payload);
     }
@@ -236,22 +243,31 @@ public class Discovery extends Device{
         public void onPayloadReceived(String endpointId, Payload payload) {
             Toast.makeText(activity, "Received", Toast.LENGTH_SHORT).show();
 
-            Integer imagePartIndex = devicesUsedInCurrentCommunication.get(endpointId);
-            Mat receivedMat = convertPayloadToMat(payload);
+            if(payloadType == PAYLOAD_TYPE_IMAGE) {
 
-            System.out.println("Zoicanel RECEIVER DISCOVERY "+imagePartIndex);
-            matImageFromGallery = replaceMat(matImageFromGallery, receivedMat, imagePartIndex);
-            ImageView imageView = activity.findViewById(R.id.imageView); ////////// RECEIVES JUST 499/499/1
-            Bitmap receivedImageBitmap = convertImageToBitmap(matImageFromGallery);
-            imageView.setImageBitmap(receivedImageBitmap);
+                Integer imagePartIndex = devicesUsedInCurrentCommunication.get(endpointId);
+                Mat receivedMat = convertPayloadToMat(payload);
 
-            devicesUsedInCurrentCommunication.remove(endpointId); ///// This may be a problem. IF we remove an id from different threads, we may have inconsticency.
-            partsNeededFromImage.remove(imagePartIndex);
+                System.out.println("Zoicanel RECEIVER DISCOVERY " + imagePartIndex);
+                imageFromGallery = replaceMat(imageFromGallery, receivedMat, imagePartIndex);
+                ImageView imageView = activity.findViewById(R.id.imageView); ////////// RECEIVES JUST 499/499/1
+                Bitmap receivedImageBitmap = convertImageToBitmap(imageFromGallery);
+                imageView.setImageBitmap(receivedImageBitmap);
 
-            if(!partsNeededFromImage.isEmpty()){
-                Integer firstNeededPartIndex = partsNeededFromImage.keySet().iterator().next();
-                System.out.println("Zoicanel"+firstNeededPartIndex);
-                sendMessageToSingleEndpoint(endpointId,firstNeededPartIndex);
+                devicesUsedInCurrentCommunication.remove(endpointId); ///// This may be a problem. IF we remove an id from different threads, we may have inconsticency.
+                partsNeededFromImage.remove(imagePartIndex);
+
+                if (!partsNeededFromImage.isEmpty()) {
+                    Integer firstNeededPartIndex = partsNeededFromImage.keySet().iterator().next();
+                    System.out.println("Zoicanel" + firstNeededPartIndex);
+                    sendMessageToSingleEndpoint(endpointId, firstNeededPartIndex);
+                }
+            } else {//if(payloadType == PAYLOAD_TYPE_STRING) {
+                batteryUsage = new String(payload.asBytes());
+                Toast.makeText(activity, "S-a ajuns", Toast.LENGTH_SHORT).show();
+
+                TextView batteryTextView = activity.findViewById(R.id.batteryView);
+                batteryTextView.setText(batteryUsage);
             }
         }
 
@@ -328,5 +344,10 @@ public class Discovery extends Device{
         }
 
         allDevicesTextView.setText(allDevicesIdString);
+    }
+
+    private void updateBatteryTextView() {
+        TextView batteryTextView = activity.findViewById(R.id.batteryView);
+        batteryTextView.setText(batteryUsage);
     }
 }

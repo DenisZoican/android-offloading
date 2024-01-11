@@ -102,7 +102,7 @@ public class Discovery extends Device{
     }
 
     private void sendMessage(Mat image) {
-        boolean useCloud = true;
+        boolean useCloud = false;
 
         if(useCloud){
             new Thread(new Runnable() {
@@ -244,14 +244,13 @@ public class Discovery extends Device{
             Toast.makeText(activity, "Received", Toast.LENGTH_SHORT).show();
 
             if(payloadType == PAYLOAD_TYPE_IMAGE) {
-
                 Integer imagePartIndex = devicesUsedInCurrentCommunication.get(endpointId);
                 Mat receivedMat = convertPayloadToMat(payload);
 
                 System.out.println("Zoicanel RECEIVER DISCOVERY " + imagePartIndex);
-                imageFromGallery = replaceMat(imageFromGallery, receivedMat, imagePartIndex);
+                matImageFromGallery = replaceMat(matImageFromGallery, receivedMat, imagePartIndex);
                 ImageView imageView = activity.findViewById(R.id.imageView); ////////// RECEIVES JUST 499/499/1
-                Bitmap receivedImageBitmap = convertImageToBitmap(imageFromGallery);
+                Bitmap receivedImageBitmap = convertImageToBitmap(matImageFromGallery);
                 imageView.setImageBitmap(receivedImageBitmap);
 
                 devicesUsedInCurrentCommunication.remove(endpointId); ///// This may be a problem. IF we remove an id from different threads, we may have inconsticency.

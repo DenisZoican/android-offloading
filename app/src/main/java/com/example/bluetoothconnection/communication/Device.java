@@ -2,8 +2,7 @@ package com.example.bluetoothconnection.communication;
 
 import static com.example.bluetoothconnection.communication.Utils.Common.createPayloadFromDeviceInitialInfo;
 import static com.example.bluetoothconnection.communication.Utils.Encrypting.generateAESKey;
-import static com.example.bluetoothconnection.communication.Utils.Encrypting.generateKeyPair;
-import static com.example.bluetoothconnection.communication.Utils.Encrypting.getSecretKey;
+import static com.example.bluetoothconnection.communication.Utils.Encrypting.generateRSAKeyPair;
 
 import android.app.Activity;
 
@@ -22,17 +21,14 @@ public abstract class Device {
     // Key pair for signing and verifying messages
     protected final KeyPair keyPairUsedForAESSecretKEy;
     protected final SecretKey AESSecretKeyUsedForMessages;
-
-    Activity activity;
-    final ConnectionsClient connectionsClient;
-
-    public Consumer<Mat> onPayloadReceivedCallbackFunction;
+    protected Activity activity;
+    protected final ConnectionsClient connectionsClient;
 
     public Device(Activity activity, ConnectionsClient connectionsClient) throws Exception {
         this.activity = activity;
         this.connectionsClient = connectionsClient;
 
-        keyPairUsedForAESSecretKEy = generateKeyPair();
+        keyPairUsedForAESSecretKEy = generateRSAKeyPair();
         AESSecretKeyUsedForMessages = generateAESKey();
     }
 

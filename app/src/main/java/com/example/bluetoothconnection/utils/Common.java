@@ -9,6 +9,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
+import java.io.Serializable;
 
 public class Common {
     public static String getStringBase64FromBytes(byte[] bytes){
@@ -48,5 +49,18 @@ public class Common {
         System.arraycopy(array1, 0, combined, 0, array1.length);
         System.arraycopy(array2, 0, combined, array1.length, array2.length);
         return combined;
+    }
+
+    private static byte[] serializeObject(Serializable object) {
+        try (ByteArrayOutputStream bos = new ByteArrayOutputStream();
+             ObjectOutputStream oos = new ObjectOutputStream(bos)) {
+
+            oos.writeObject(object);
+            return bos.toByteArray();
+
+        } catch (IOException e) {
+            e.printStackTrace();
+            return null;
+        }
     }
 }

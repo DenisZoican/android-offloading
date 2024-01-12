@@ -1,11 +1,9 @@
 package com.example.bluetoothconnection.communication;
 
-import static com.example.bluetoothconnection.communication.Utils.Common.PAYLOAD_TYPE_IMAGE;
-import static com.example.bluetoothconnection.communication.Utils.Common.PAYLOAD_TYPE_STRING;
 import static com.example.bluetoothconnection.communication.Utils.Common.SERVICE_ID;
 import static com.example.bluetoothconnection.communication.Utils.Common.STRATEGY;
 import static com.example.bluetoothconnection.communication.Utils.Common.createPayloadFromMat;
-import static com.example.bluetoothconnection.communication.Utils.Common.extractPayloadData;
+import static com.example.bluetoothconnection.communication.Utils.Common.extractDataFromPayload;
 import static com.example.bluetoothconnection.communication.Utils.Encrypting.checkAuthenticationToken;
 import static com.example.bluetoothconnection.communication.Utils.Encrypting.getEncryptedAuthenticationToken;
 import static com.example.bluetoothconnection.opencv.ImageProcessing.convertImageToBitmap;
@@ -38,8 +36,7 @@ import org.opencv.core.Mat;
 import java.security.PublicKey;
 
 public class Advertise extends Device {
-    private String discoveryDeviceId; ///// Rename it later
-    private String payloadType;
+    private String discoveryDeviceId;
     private PublicKey discoveryDevicePublicKey;
     public Advertise(Activity activity, ConnectionsClient connectionsClient) throws Exception {
         super(activity, connectionsClient);
@@ -49,22 +46,18 @@ public class Advertise extends Device {
         activity.setContentView(R.layout.activity_advertise_main);
         initializeUiElements();
 
-        System.out.println("BEGIN ADVER");
         AdvertisingOptions advertisingOptions =
             new AdvertisingOptions.Builder().setStrategy(STRATEGY).build();
 
         String authenticationTokenAsName = getEncryptedAuthenticationToken();
-
         connectionsClient.startAdvertising(authenticationTokenAsName, SERVICE_ID, connectionLifecycleCallback, advertisingOptions)
                 .addOnSuccessListener(
                         (Void unused) -> {
-                            // We're advertising!
-                            System.out.println("SUCCESS ADVER ");
+                            Toast.makeText(activity, "Started advertising", Toast.LENGTH_SHORT).show();
                         })
                 .addOnFailureListener(
                         (Exception e) -> {
-                            // We were unable to start advertising.
-                            System.out.println("FAILED ADVER" + e.toString());
+                            Toast.makeText(activity, "Failed to advertise - "+e.toString(), Toast.LENGTH_SHORT).show();
                         });
     }
 
@@ -75,14 +68,12 @@ public class Advertise extends Device {
         }
 
         Payload processedPayload = createPayloadFromMat(image, discoveryDevicePublicKey, AESSecretKeyUsedForMessages);
-        payloadType = PAYLOAD_TYPE_IMAGE;
         connectionsClient.sendPayload(discoveryDeviceId, processedPayload);
     }
     public void sendBatteryUsage(String batteryMessage) {
         System.out.println("Send batteryMessage from advertise");
         byte[] toSend = batteryMessage.getBytes();
         Payload payload = Payload.fromBytes(toSend);
-        payloadType = PAYLOAD_TYPE_STRING;
         connectionsClient.sendPayload(discoveryDeviceId, payload);
     }
     public void disconnect() {
@@ -97,7 +88,6 @@ public class Advertise extends Device {
             new ConnectionLifecycleCallback() {
                 @Override
                 public void onConnectionInitiated(String endpointId, ConnectionInfo connectionInfo) {
-                    System.out.println("GRRRRRR INITIATED");
                     // Automatically accept the connection on both devices.
                     try {
                         if(checkAuthenticationToken(connectionInfo.getEndpointName())){
@@ -111,17 +101,10 @@ public class Advertise extends Device {
                 @Override
                 public void onConnectionResult(String endpointId, ConnectionResolution result) {
                     if (result.getStatus().isSuccess()) {
-                        // We're connected!
-                        System.out.println("GRRRRRR CONNECTED");
-
-                        // We should send just if you do the offloading
-                        //sendMessage("info: memory usage");
-
                         discoveryDeviceId = endpointId;
                         updateAllDevicesTextView();
 
                         sendDeviceInitialInfo(endpointId); ////// SHOULD PUT BATTERY INFO HERE - with love for Aidel
-
                     } else {
                         // We were unable to connect.
                     }
@@ -135,20 +118,17 @@ public class Advertise extends Device {
     private final PayloadCallback payloadCallback = new PayloadCallback() {  ///// Isn't this the same with discovery???
         @Override
         public void onPayloadReceived(String endpointId, Payload payload) {
-            // We received a payload!
-            System.out.println("DA DA");
-            Toast.makeText(activity, "Received", Toast.LENGTH_SHORT).show();
-
             boolean isEndpointTheDiscoveryDevice = discoveryDeviceId == endpointId;
             if(isEndpointTheDiscoveryDevice){
                 return;
             }
 
+            /// Must delete discoveryDevicePublicKey if disconnected from discovery device
             boolean isDeviceInitialInfoPayload = discoveryDevicePublicKey == null;
 
             PayloadData payloadData = null;
             try {
-                payloadData =  isDeviceInitialInfoPayload ? Common.extractPayloadData(payload) : Common.extractPayloadData(payload, keyPairUsedForAESSecretKEy.getPrivate());
+                payloadData =  isDeviceInitialInfoPayload ? extractDataFromPayload(payload) : extractDataFromPayload(payload, keyPairUsedForAESSecretKEy.getPrivate());
             } catch (Exception e) {
                 throw new RuntimeException(e);
             }
@@ -166,23 +146,6 @@ public class Advertise extends Device {
                     break;
 
             }
-
-            //Mat receivedImage = convertPayloadToMat(payload,500,500); ////////////// Dimensions are false 100%
-
-            //sendMat(receivedImage);
-
-            return;
-            /*Mat processedImage;
-
-            try { ////////// Simulate that we do something to the message
-                Thread.sleep(2000);
-                processedImage = ImageProcessing.processImage(receivedImage);
-            } catch (InterruptedException e) {
-                throw new RuntimeException(e);
-            }
-            sendMat(processedImage);
-
-             */
         }
 
         @Override
@@ -221,6 +184,7 @@ public class Advertise extends Device {
         }
     }
 
+    ////// UI stuff
     private void updateAllDevicesTextView(){
         TextView allDevicesTextView = activity.findViewById(R.id.allDevices);
 

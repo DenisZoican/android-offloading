@@ -1,10 +1,9 @@
 package com.example.bluetoothconnection.communication;
 
-import static com.example.bluetoothconnection.communication.Utils.Common.PAYLOAD_TYPE_IMAGE;
 import static com.example.bluetoothconnection.communication.Utils.Common.SERVICE_ID;
 import static com.example.bluetoothconnection.communication.Utils.Common.STRATEGY;
 import static com.example.bluetoothconnection.communication.Utils.Common.createPayloadFromMat;
-import static com.example.bluetoothconnection.communication.Utils.Common.extractPayloadData;
+import static com.example.bluetoothconnection.communication.Utils.Common.extractDataFromPayload;
 import static com.example.bluetoothconnection.communication.Utils.Encrypting.checkAuthenticationToken;
 import static com.example.bluetoothconnection.communication.Utils.Encrypting.getEncryptedAuthenticationToken;
 import static com.example.bluetoothconnection.opencv.ImageProcessing.convertImageToBitmap;
@@ -53,9 +52,7 @@ import java.util.List;
 import java.util.Map;
 
 public class Discovery extends Device{
-    public static final int PICK_IMAGE_REQUEST = 1;
     private Map<String,DeviceInitialInfo> discoveredDevices = new HashMap<>();
-    private String payloadType;
     private String batteryUsage = new String();
     private Map<String,Integer> devicesUsedInCurrentCommunication;
     private Map<Integer, Mat> partsNeededFromImage;
@@ -70,19 +67,18 @@ public class Discovery extends Device{
         activity.setContentView(R.layout.activity_discover_main);
         initializeUiElements();
 
-        System.out.println("STTTTTTTTTTTTART DISC");
         DiscoveryOptions discoveryOptions = new DiscoveryOptions.Builder().setStrategy(STRATEGY).build();
         connectionsClient.startDiscovery(
                         SERVICE_ID, endpointDiscoveryCallback, discoveryOptions)
                 .addOnSuccessListener(
                         (Void unused) -> {
                             // We're discovering nearby endpoints!
-                            System.out.println("SUCCESS DISCOVERY");
+                            Toast.makeText(activity, "We are advertising.", Toast.LENGTH_SHORT).show();
                         })
                 .addOnFailureListener(
                         (Exception e) -> {
                             // We were unable to start discovering.
-                            System.out.println("FAILED DISCOVERY"+e.toString());
+                            Toast.makeText(activity, "Failed to discover - "+e.toString(), Toast.LENGTH_SHORT).show();
                         });
     }
 
@@ -94,7 +90,6 @@ public class Discovery extends Device{
         Mat resizedMat = new Mat(500, 500, CvType.CV_8UC4);
         Imgproc.resize(matImageFromGallery, resizedMat, new Size(500, 500), 0, 0, Imgproc.INTER_LINEAR);
         /////////////// MUST RESIZE. FIND MAX SIZE FOR PAYLOAD
-        payloadType = PAYLOAD_TYPE_IMAGE;
 
         this.matImageFromGallery = resizedMat;
     }
@@ -118,7 +113,6 @@ public class Discovery extends Device{
 
         String endpointId = discoveredDevices.keySet().iterator().next();
         sendMessageToSingleEndpoint(endpointId, 0);
-
         /*
         //// Real dividing and sending images. Do not delete. Will be used in future
         List<Mat> divideImages = ImageProcessing.divideImages(imageFromGallery,allDevicesIds.size());
@@ -137,9 +131,7 @@ public class Discovery extends Device{
     ///////////// Send message only if we have public key. Add a check
     private void sendMessageToSingleEndpoint(String endpointId, int imagePart) throws Exception {
         ///////////// Send message only if we have public key. Add a check
-
         devicesUsedInCurrentCommunication.put(endpointId,imagePart);
-        payloadType = PAYLOAD_TYPE_IMAGE;
 
         PublicKey endpointPublicKey = discoveredDevices.get(endpointId).getPublicKey();
 
@@ -171,9 +163,7 @@ public class Discovery extends Device{
                 @Override
                 public void onEndpointFound(String endpointId, DiscoveredEndpointInfo info) {
                     // We found an endpoint!
-                    System.out.println("GRRRRRRRR We found endpoint " + endpointId);
-
-                    System.out.println(info.getServiceId()); ////////// Check if we need to check this or if it is checked automaticall
+                    System.out.println(info.getServiceId()); ////////// Check if we need to check this or if it is checked automatically
 
                     String authenticationTokenAsName = null;
                     try {
@@ -198,7 +188,6 @@ public class Discovery extends Device{
                 @Override
                 public void onEndpointLost(String endpointId) {
                     // We lost an endpoint.
-                    System.out.println("We lost endpoint "+endpointId);
                     //////// !!!!!!!!!! verify if it throws exception when list doesn't contain endpointId !!!!!!!!!!!
                     discoveredDevices.remove(endpointId);
                     updateAllDevicesTextView();
@@ -244,11 +233,11 @@ public class Discovery extends Device{
         public void onPayloadReceived(String endpointId, Payload payload) {
             Toast.makeText(activity, "Received", Toast.LENGTH_SHORT).show();
 
-            boolean deviceInfoExistsForEndpoint = discoveredDevices.containsKey(endpointId);
+            boolean isDeviceInitialInfoPayload = !discoveredDevices.containsKey(endpointId);
 
             PayloadData payloadData = null;
             try {
-                payloadData = deviceInfoExistsForEndpoint ? Common.extractPayloadData(payload, keyPairUsedForAESSecretKEy.getPrivate()) : Common.extractPayloadData(payload);
+                payloadData = isDeviceInitialInfoPayload ? extractDataFromPayload(payload) : extractDataFromPayload(payload, keyPairUsedForAESSecretKEy.getPrivate());
             } catch (Exception e) {
                 throw new RuntimeException(e);
             }
@@ -285,26 +274,29 @@ public class Discovery extends Device{
 
     private void deviceInitialInfoReceivedBehavior(PayloadDeviceInitialInfoData payloadDeviceInitialInfoData, String endpointId) {
         DeviceInitialInfo deviceInitialInfo = payloadDeviceInitialInfoData.getDeviceInitialInfo();
-        discoveredDevices.put(endpointId,deviceInitialInfo);
+        discoveredDevices.put(endpointId, deviceInitialInfo);
         updateAllDevicesTextView();
     }
+
     private void matReceivedBehavior(PayloadMatData payloadMatData, String endpointId, int imagePartIndex) throws Exception {
         Mat receivedMat = payloadMatData.getImage();
 
-        System.out.println("Zoicanel RECEIVER DISCOVERY " + imagePartIndex);
-        matImageFromGallery = replaceMat(matImageFromGallery, receivedMat, imagePartIndex);
-        ImageView imageView = activity.findViewById(R.id.imageView); ////////// RECEIVES JUST 499/499/1
-        Bitmap receivedImageBitmap = convertImageToBitmap(matImageFromGallery);
-        imageView.setImageBitmap(receivedImageBitmap);
+        replacePartInImageFromGallery(receivedMat, imagePartIndex);
 
         devicesUsedInCurrentCommunication.remove(endpointId); ///// This may be a problem. IF we remove an id from different threads, we may have inconsticency.
         partsNeededFromImage.remove(imagePartIndex);
 
         if (!partsNeededFromImage.isEmpty()) {
             Integer firstNeededPartIndex = partsNeededFromImage.keySet().iterator().next();
-            System.out.println("Zoicanel" + firstNeededPartIndex);
             sendMessageToSingleEndpoint(endpointId, firstNeededPartIndex);
         }
+    }
+
+    private void replacePartInImageFromGallery(Mat imagePart, int imagePartIndex){
+        matImageFromGallery = replaceMat(matImageFromGallery, imagePart, imagePartIndex);
+        ImageView imageView = activity.findViewById(R.id.imageView);
+        Bitmap receivedImageBitmap = convertImageToBitmap(matImageFromGallery);
+        imageView.setImageBitmap(receivedImageBitmap);
     }
     private void uploadImageToAPI() {
         try {

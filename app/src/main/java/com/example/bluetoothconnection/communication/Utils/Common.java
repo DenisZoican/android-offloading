@@ -16,15 +16,12 @@ import com.google.android.gms.nearby.connection.Strategy;
 
 import static com.example.bluetoothconnection.utils.Common.combineArrays;
 import static com.example.bluetoothconnection.utils.Common.deserializeObject;
+import static com.example.bluetoothconnection.utils.Common.serializeObject;
 
 import org.opencv.core.Mat;
 import org.opencv.core.MatOfByte;
 import org.opencv.imgcodecs.Imgcodecs;
 
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.io.ObjectOutputStream;
-import java.io.Serializable;
 import java.nio.ByteBuffer;
 import java.security.PrivateKey;
 import java.security.PublicKey;
@@ -36,32 +33,15 @@ public class Common {
     public enum MessageContentType {
         Image,
         InitialDeviceInfo
-        // ... add more enum values as needed
     }
     public static final Strategy STRATEGY = Strategy.P2P_STAR; //// Use P2P_CLUSTER because in START the central one is the advertiser.
     public static final String SERVICE_ID = "com.example.nearbytest";
-
-    //o sa le fac un enum
-    public static final String PAYLOAD_TYPE_IMAGE = "image";
-    public static final String PAYLOAD_TYPE_STRING= "message";
     public static final int ENCRYPTED_SECRET_KEY_LENGTH = 256;
-    ////////// Delete the following 2
-    public static Payload convertMatToPayload(Mat image){
-        // Convert the Mat to a byte array
-        MatOfByte matOfByte = new MatOfByte();
-        Imgcodecs.imencode(".jpg", image, matOfByte); /////////// We can specify the extension. Now is empty
-        byte[] byteArray = matOfByte.toArray();
-        return Payload.fromBytes(byteArray);
-    }
-
-    public static Mat convertPayloadToMat(Payload payload){
-        MatOfByte matOfByte = new MatOfByte(payload.asBytes());
-        return Imgcodecs.imdecode(matOfByte, Imgcodecs.IMREAD_UNCHANGED);
-    }
+    public static final int MESSAGE_CONTENT_TYPE_LENGTH = 4;
 
     public static Payload createPayloadFromMat(Mat image, PublicKey publicKey, SecretKey secretKey) throws Exception {
         // Convert enum to byte array
-        byte[] enumBytes = convertIntToByteArray(MessageContentType.Image.ordinal());
+        byte[] enumBytes = convertMessageContentTypeToByteArray(MessageContentType.Image.ordinal());
 
         // Convert image (Mat) to byte array
         byte[] imageBytes = convertMatToByteArray(image);
@@ -77,7 +57,7 @@ public class Common {
 
     public static Payload createPayloadFromDeviceInitialInfo(DeviceInitialInfo deviceInitialInfo) throws Exception {
         // Convert enum to byte array
-        byte[] enumBytes = convertIntToByteArray(MessageContentType.InitialDeviceInfo.ordinal());
+        byte[] enumBytes = convertMessageContentTypeToByteArray(MessageContentType.InitialDeviceInfo.ordinal());
 
         // Convert image (Mat) to byte array
         byte[] classBytes = serializeObject(deviceInitialInfo);
@@ -91,29 +71,16 @@ public class Common {
         return createPayloadWithEncryptedBytes(combinedBytes);
     }
 
-    public static PayloadData extractPayloadData(Payload payload, PrivateKey privateKey) throws Exception {
+    public static PayloadData extractDataFromPayload(Payload payload, PrivateKey privateKey) throws Exception {
         // Extract byte array from the payload
-        byte[] combinedBytes = payload.asBytes();
+        byte[] payloadBytes = payload.asBytes();
+        byte[] decryptedContentBytes = getDecryptedContentBytes(payloadBytes, privateKey);
 
-        //// Get SECRET KEY and IMAGE
-        int totalBytesLength = combinedBytes.length;
-        byte[] encryptedSecretKey = new byte[ENCRYPTED_SECRET_KEY_LENGTH];
-        byte[] encryptedBytes = new byte[totalBytesLength - ENCRYPTED_SECRET_KEY_LENGTH];
-        System.arraycopy(combinedBytes, 0, encryptedSecretKey, 0, ENCRYPTED_SECRET_KEY_LENGTH);
-        System.arraycopy(combinedBytes, ENCRYPTED_SECRET_KEY_LENGTH, encryptedBytes, 0, totalBytesLength-ENCRYPTED_SECRET_KEY_LENGTH);
+        int messageContentTypeValue = convertByteArrayToMessageContentType(decryptedContentBytes); /// Use just first 4 bytes from here
+        MessageContentType messageContentType = MessageContentType.values()[messageContentTypeValue];
 
-        byte[] decryptedSecretKey = decryptRSAWithPrivateKey(encryptedSecretKey, privateKey);
-
-        // Decrypt the original data using the decrypted AES secret key
-        byte[] decryptedBytes = decryptWithAES(encryptedBytes, new SecretKeySpec(decryptedSecretKey, "AES"));
-
-        //////////
-
-        int enumValue = convertByteArrayToInt(decryptedBytes); /// Use just first 4 bytes from here
-        MessageContentType messageContentType = MessageContentType.values()[enumValue];
-
-        byte[] contentBytes = new byte[decryptedBytes.length - 4];
-        System.arraycopy(decryptedBytes, 4, contentBytes, 0, contentBytes.length);
+        byte[] contentBytes = new byte[decryptedContentBytes.length - MESSAGE_CONTENT_TYPE_LENGTH];
+        System.arraycopy(decryptedContentBytes, MESSAGE_CONTENT_TYPE_LENGTH, contentBytes, 0, contentBytes.length);
 
         switch (messageContentType) {
             case Image:
@@ -123,28 +90,26 @@ public class Common {
         }
     }
 
-    public static PayloadData extractPayloadData(Payload payload) throws Exception {
+    public static PayloadData extractDataFromPayload(Payload payload) throws Exception {
         // Extract byte array from the payload
-        byte[] combinedBytes = payload.asBytes();
-        byte[] decryptedBytes = decryptWithCommonKey(combinedBytes);
+        byte[] payloadBytes = payload.asBytes();
+        byte[] decryptedBytes = decryptWithCommonKey(payloadBytes);
 
         byte[] contentBytes = new byte[decryptedBytes.length - 4];
         System.arraycopy(decryptedBytes, 4, contentBytes, 0, contentBytes.length);
 
-        return extractInitialDeviceInfoData(contentBytes);
+        return extractDataFromPayload(contentBytes);
     }
 
-    private static byte[] serializeObject(Serializable object) {
-        try (ByteArrayOutputStream bos = new ByteArrayOutputStream();
-             ObjectOutputStream oos = new ObjectOutputStream(bos)) {
+    private static byte[] getDecryptedContentBytes(byte[] payloadBytes, PrivateKey privateKey) throws Exception {
+        int totalBytesLength = payloadBytes.length;
+        byte[] encryptedSecretKey = new byte[ENCRYPTED_SECRET_KEY_LENGTH];
+        byte[] encryptedBytes = new byte[totalBytesLength - ENCRYPTED_SECRET_KEY_LENGTH];
+        System.arraycopy(payloadBytes, 0, encryptedSecretKey, 0, ENCRYPTED_SECRET_KEY_LENGTH);
+        System.arraycopy(payloadBytes, ENCRYPTED_SECRET_KEY_LENGTH, encryptedBytes, 0, totalBytesLength-ENCRYPTED_SECRET_KEY_LENGTH);
 
-            oos.writeObject(object);
-            return bos.toByteArray();
-
-        } catch (IOException e) {
-            e.printStackTrace();
-            return null;
-        }
+        byte[] decryptedSecretKey = decryptRSAWithPrivateKey(encryptedSecretKey, privateKey);
+        return decryptWithAES(encryptedBytes, new SecretKeySpec(decryptedSecretKey, "AES"));
     }
 
     private static Payload createPayloadWithEncryptedBytes(byte[] bytes) throws Exception {
@@ -167,7 +132,7 @@ public class Common {
         return Payload.fromBytes(combinedData);
     }
 
-    private static PayloadDeviceInitialInfoData extractInitialDeviceInfoData(byte[] byteArray){
+    private static PayloadDeviceInitialInfoData extractDataFromPayload(byte[] byteArray){
         DeviceInitialInfo deviceInitialInfo = deserializeObject(byteArray, DeviceInitialInfo.class);
 
         return new PayloadDeviceInitialInfoData(deviceInitialInfo);
@@ -180,16 +145,16 @@ public class Common {
         return new PayloadMatData(image);
     }
 
-    private static byte[] convertIntToByteArray(int value) {
-        return ByteBuffer.allocate(4).putInt(value).array();
+    private static byte[] convertMessageContentTypeToByteArray(int value) {
+        return ByteBuffer.allocate(MESSAGE_CONTENT_TYPE_LENGTH).putInt(value).array();
     }
     private static byte[] convertMatToByteArray(Mat image) {
         MatOfByte matOfByte = new MatOfByte();
         Imgcodecs.imencode(".jpg", image, matOfByte); /////////// We can specify the extension. Now is empty
         return matOfByte.toArray();
     }
-    private static int convertByteArrayToInt(byte[] bytes) {
-        return ByteBuffer.wrap(bytes, 0, 4).getInt();
+    private static int convertByteArrayToMessageContentType(byte[] bytes) {
+        return ByteBuffer.wrap(bytes, 0, MESSAGE_CONTENT_TYPE_LENGTH).getInt();
     }
     private static Mat convertByteArrayToMat(byte[] bytes){
         MatOfByte matOfByte = new MatOfByte(bytes);

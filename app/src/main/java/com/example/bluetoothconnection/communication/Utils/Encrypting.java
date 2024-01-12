@@ -33,7 +33,7 @@ public class Encrypting {
         return SECRET_AUTHENTICATION_TOKEN.equals(decryptedAuthenticationTokenString);
     }
 
-    public static SecretKey getSecretKey() throws Exception {
+    public static SecretKey getCommonSecretKey() throws Exception {
         int iterationCount = 10000; // Adjust this based on your security requirements
         int keyLength = 256; // Key length in bits
 
@@ -43,8 +43,7 @@ public class Encrypting {
     }
 
     public static byte[] encryptWithCommonKey(byte[] content) throws Exception {
-        SecretKey secretKey = getSecretKey();
-        System.out.println("Secret key ss "+secretKey);
+        SecretKey secretKey = getCommonSecretKey();
         Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
         cipher.init(Cipher.ENCRYPT_MODE, secretKey);
 
@@ -60,7 +59,7 @@ public class Encrypting {
     }
 
     public static byte[] decryptWithCommonKey(byte[] content) throws Exception {
-        SecretKey secretKey = getSecretKey();
+        SecretKey secretKey = getCommonSecretKey();
         Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
 
         // Extract IV and encrypted text from combined byte array
@@ -75,7 +74,7 @@ public class Encrypting {
         return cipher.doFinal(encryptedBytes);
     }
 
-    public static KeyPair generateKeyPair() {
+    public static KeyPair generateRSAKeyPair() {
         try {
             KeyPairGenerator keyPairGenerator = KeyPairGenerator.getInstance("RSA");
             return keyPairGenerator.generateKeyPair();

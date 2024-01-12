@@ -5,10 +5,11 @@ import static com.example.bluetoothconnection.communication.Utils.Common.PAYLOAD
 import static com.example.bluetoothconnection.communication.Utils.Common.SERVICE_ID;
 import static com.example.bluetoothconnection.communication.Utils.Common.STRATEGY;
 import static com.example.bluetoothconnection.communication.Utils.Common.createPayloadFromMat;
-import static com.example.bluetoothconnection.communication.Utils.Common.extractDataFromPayload;
+import static com.example.bluetoothconnection.communication.Utils.Common.extractPayloadData;
+import static com.example.bluetoothconnection.communication.Utils.Encrypting.checkAuthenticationToken;
+import static com.example.bluetoothconnection.communication.Utils.Encrypting.getEncryptedAuthenticationToken;
 import static com.example.bluetoothconnection.opencv.ImageProcessing.convertImageToBitmap;
 import static com.example.bluetoothconnection.opencv.ImageProcessing.processImage;
-import static com.example.bluetoothconnection.utils.EncryptionUtils.SECRET_AUTHENTICATION_TOKEN;
 
 import android.app.Activity;
 import android.view.View;
@@ -18,9 +19,11 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import com.example.bluetoothconnection.R;
-import com.example.bluetoothconnection.communication.Utils.PayloadDataEntities.PayloadData;
-import com.example.bluetoothconnection.communication.Utils.PayloadDataEntities.PayloadMatData;
-import com.example.bluetoothconnection.utils.EncryptionUtils;
+import com.example.bluetoothconnection.communication.Entities.DeviceInitialInfo;
+import com.example.bluetoothconnection.communication.PayloadDataEntities.PayloadData;
+import com.example.bluetoothconnection.communication.PayloadDataEntities.PayloadDeviceInitialInfoData;
+import com.example.bluetoothconnection.communication.PayloadDataEntities.PayloadMatData;
+import com.example.bluetoothconnection.communication.Utils.Common;
 import com.google.android.gms.nearby.connection.AdvertisingOptions;
 import com.google.android.gms.nearby.connection.ConnectionInfo;
 import com.google.android.gms.nearby.connection.ConnectionLifecycleCallback;
@@ -32,10 +35,13 @@ import com.google.android.gms.nearby.connection.PayloadTransferUpdate;
 
 import org.opencv.core.Mat;
 
+import java.security.PublicKey;
+
 public class Advertise extends Device {
     private String discoveryDeviceId; ///// Rename it later
     private String payloadType;
-    public Advertise(Activity activity, ConnectionsClient connectionsClient){
+    private PublicKey discoveryDevicePublicKey;
+    public Advertise(Activity activity, ConnectionsClient connectionsClient) throws Exception {
         super(activity, connectionsClient);
     }
 
@@ -47,7 +53,7 @@ public class Advertise extends Device {
         AdvertisingOptions advertisingOptions =
             new AdvertisingOptions.Builder().setStrategy(STRATEGY).build();
 
-        String authenticationTokenAsName = EncryptionUtils.encrypt(SECRET_AUTHENTICATION_TOKEN);
+        String authenticationTokenAsName = getEncryptedAuthenticationToken();
 
         connectionsClient.startAdvertising(authenticationTokenAsName, SERVICE_ID, connectionLifecycleCallback, advertisingOptions)
                 .addOnSuccessListener(
@@ -62,8 +68,13 @@ public class Advertise extends Device {
                         });
     }
 
-    public void sendMessage(Mat image) {
-        Payload processedPayload = createPayloadFromMat(image);
+    public void sendMessage(Mat image) throws Exception {
+        if(discoveryDevicePublicKey == null){
+            Toast.makeText(activity, "No public key found for discovery device.", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        Payload processedPayload = createPayloadFromMat(image, discoveryDevicePublicKey, AESSecretKeyUsedForMessages);
         payloadType = PAYLOAD_TYPE_IMAGE;
         connectionsClient.sendPayload(discoveryDeviceId, processedPayload);
     }
@@ -95,8 +106,6 @@ public class Advertise extends Device {
                     } catch (Exception e) {
                         throw new RuntimeException(e);
                     }
-
-                    connectionsClient.acceptConnection(endpointId, payloadCallback);
                 }
 
                 @Override
@@ -110,6 +119,8 @@ public class Advertise extends Device {
 
                         discoveryDeviceId = endpointId;
                         updateAllDevicesTextView();
+
+                        sendDeviceInitialInfo(endpointId); ////// SHOULD PUT BATTERY INFO HERE - with love for Aidel
 
                     } else {
                         // We were unable to connect.
@@ -128,11 +139,32 @@ public class Advertise extends Device {
             System.out.println("DA DA");
             Toast.makeText(activity, "Received", Toast.LENGTH_SHORT).show();
 
-            PayloadData payloadData = extractDataFromPayload(payload);
+            boolean isEndpointTheDiscoveryDevice = discoveryDeviceId == endpointId;
+            if(isEndpointTheDiscoveryDevice){
+                return;
+            }
+
+            boolean isDeviceInitialInfoPayload = discoveryDevicePublicKey == null;
+
+            PayloadData payloadData = null;
+            try {
+                payloadData =  isDeviceInitialInfoPayload ? Common.extractPayloadData(payload) : Common.extractPayloadData(payload, keyPairUsedForAESSecretKEy.getPrivate());
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+
             switch (payloadData.getMessageContentType()){
                 case Image:
-                    matReceivedBehavior((PayloadMatData)payloadData);
+                    try {
+                        matReceivedBehavior((PayloadMatData)payloadData);
+                    } catch (Exception e) {
+                        throw new RuntimeException(e);
+                    }
                     break;
+                case InitialDeviceInfo:
+                    deviceInitialInfoReceivedBehavior((PayloadDeviceInitialInfoData) payloadData);
+                    break;
+
             }
 
             //Mat receivedImage = convertPayloadToMat(payload,500,500); ////////////// Dimensions are false 100%
@@ -159,7 +191,11 @@ public class Advertise extends Device {
         }
     };
 
-    private void matReceivedBehavior(PayloadMatData payloadMatData){
+    private void deviceInitialInfoReceivedBehavior(PayloadDeviceInitialInfoData payloadDeviceInitialInfoData) {
+        this.discoveryDevicePublicKey = payloadDeviceInitialInfoData.getDeviceInitialInfo().getPublicKey();
+    }
+
+    private void matReceivedBehavior(PayloadMatData payloadMatData) throws Exception {
         Mat receivedMat = payloadMatData.getImage();
 
         try {
@@ -174,6 +210,15 @@ public class Advertise extends Device {
         imageView.setImageBitmap(convertImageToBitmap(receivedMat));
 
         sendMessage(processedMat);
+    }
+
+    private void sendDeviceInitialInfo(String endpointId){
+        DeviceInitialInfo deviceInitialInfo = new DeviceInitialInfo(keyPairUsedForAESSecretKEy.getPublic(),29);
+        try {
+            sendDeviceInitialInfo(deviceInitialInfo, endpointId);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
 
     private void updateAllDevicesTextView(){

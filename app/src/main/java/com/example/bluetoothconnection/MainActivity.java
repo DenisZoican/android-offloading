@@ -27,7 +27,6 @@ import android.widget.Button;
 import android.widget.ImageView;
 import android.widget.Toast;
 
-import com.example.bluetoothconnection.utils.EncryptionUtils;
 import com.google.android.gms.nearby.Nearby;
 import com.google.android.gms.nearby.connection.*;
 
@@ -60,15 +59,6 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         System.out.println("GRRRRRRRRRRRR OpenCV"+ OpenCVLoader.initDebug());
 
-        /// Test encrypt
-        try {
-            String encryptedString = EncryptionUtils.encrypt("My name is Zoicanel");
-            String result = EncryptionUtils.decrypt(encryptedString);
-            System.out.println("Secret key ---- "+result);
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
-
 
         // Initialize the Nearby Connections client
         connectionsClient = Nearby.getConnectionsClient(this); //may be deleted because it's used just here
@@ -79,7 +69,11 @@ public class MainActivity extends AppCompatActivity {
         System.out.println("GRRRRRRRRRRRR  GRANTED");
 
         boolean isAdvertise = !Build.MODEL.equals("Pixel 7");
-        device = isAdvertise ? new Advertise(this, connectionsClient) : new Discovery(this, connectionsClient);
+        try {
+            device = isAdvertise ? new Advertise(this, connectionsClient) : new Discovery(this, connectionsClient);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
 
         try {
             device.start();

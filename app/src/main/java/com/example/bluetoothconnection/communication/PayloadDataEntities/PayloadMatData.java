@@ -1,4 +1,4 @@
-package com.example.bluetoothconnection.communication.Utils.PayloadDataEntities;
+package com.example.bluetoothconnection.communication.PayloadDataEntities;
 
 import org.opencv.core.Mat;
 import static com.example.bluetoothconnection.communication.Utils.Common.MessageContentType;

@@ -1,4 +1,4 @@
-package com.example.bluetoothconnection.communication.Utils.PayloadDataEntities;
+package com.example.bluetoothconnection.communication.PayloadDataEntities;
 
 import static com.example.bluetoothconnection.communication.Utils.Common.MessageContentType;
 

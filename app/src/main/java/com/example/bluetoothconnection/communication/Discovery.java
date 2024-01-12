@@ -3,17 +3,15 @@ package com.example.bluetoothconnection.communication;
 import static com.example.bluetoothconnection.communication.Utils.Common.PAYLOAD_TYPE_IMAGE;
 import static com.example.bluetoothconnection.communication.Utils.Common.SERVICE_ID;
 import static com.example.bluetoothconnection.communication.Utils.Common.STRATEGY;
-import static com.example.bluetoothconnection.communication.Utils.Common.convertMatToPayload;
-import static com.example.bluetoothconnection.communication.Utils.Common.convertPayloadToMat;
 import static com.example.bluetoothconnection.communication.Utils.Common.createPayloadFromMat;
-import static com.example.bluetoothconnection.communication.Utils.Common.extractDataFromPayload;
+import static com.example.bluetoothconnection.communication.Utils.Common.extractPayloadData;
+import static com.example.bluetoothconnection.communication.Utils.Encrypting.checkAuthenticationToken;
+import static com.example.bluetoothconnection.communication.Utils.Encrypting.getEncryptedAuthenticationToken;
 import static com.example.bluetoothconnection.opencv.ImageProcessing.convertImageToBitmap;
 import static com.example.bluetoothconnection.opencv.ImageProcessing.replaceMat;
-import static com.example.bluetoothconnection.utils.EncryptionUtils.SECRET_AUTHENTICATION_TOKEN;
 
 import android.app.Activity;
 import android.graphics.Bitmap;
-import android.util.ArraySet;
 import android.view.View;
 import android.widget.Button;
 import android.widget.ImageView;
@@ -21,10 +19,12 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import com.example.bluetoothconnection.R;
-import com.example.bluetoothconnection.communication.Utils.PayloadDataEntities.PayloadData;
-import com.example.bluetoothconnection.communication.Utils.PayloadDataEntities.PayloadMatData;
+import com.example.bluetoothconnection.communication.Entities.DeviceInitialInfo;
+import com.example.bluetoothconnection.communication.PayloadDataEntities.PayloadData;
+import com.example.bluetoothconnection.communication.PayloadDataEntities.PayloadDeviceInitialInfoData;
+import com.example.bluetoothconnection.communication.PayloadDataEntities.PayloadMatData;
+import com.example.bluetoothconnection.communication.Utils.Common;
 import com.example.bluetoothconnection.opencv.ImageProcessing;
-import com.example.bluetoothconnection.utils.EncryptionUtils;
 import com.google.android.gms.nearby.connection.ConnectionInfo;
 import com.google.android.gms.nearby.connection.ConnectionLifecycleCallback;
 import com.google.android.gms.nearby.connection.ConnectionResolution;
@@ -47,15 +47,14 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
-import java.util.ArrayList;
+import java.security.PublicKey;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 public class Discovery extends Device{
     public static final int PICK_IMAGE_REQUEST = 1;
-    private Set<String> allDevicesIds = new ArraySet();
+    private Map<String,DeviceInitialInfo> discoveredDevices = new HashMap<>();
     private String payloadType;
     private String batteryUsage = new String();
     private Map<String,Integer> devicesUsedInCurrentCommunication;
@@ -63,7 +62,7 @@ public class Discovery extends Device{
     private Mat matImageFromGallery;
     private String urlPathImageFromGallery;
 
-    public Discovery(Activity activity, ConnectionsClient connectionsClient){
+    public Discovery(Activity activity, ConnectionsClient connectionsClient) throws Exception {
         super(activity, connectionsClient);
     }
 
@@ -100,7 +99,7 @@ public class Discovery extends Device{
         this.matImageFromGallery = resizedMat;
     }
 
-    private void sendMessage(Mat image) {
+    private void sendMessage(Mat image) throws Exception {
         boolean useCloud = false;
 
         if(useCloud){
@@ -112,13 +111,12 @@ public class Discovery extends Device{
             }).start();
             return;
         }
+
         /// Simulate multiple devices when we have only one
         int numberOfParts = 3;
         initializeImageValues(numberOfParts);
 
-        List<String> allDevicesArray = new ArrayList<>(allDevicesIds);
-        String endpointId = allDevicesArray.get(0);
-
+        String endpointId = discoveredDevices.keySet().iterator().next();
         sendMessageToSingleEndpoint(endpointId, 0);
 
         /*
@@ -136,10 +134,16 @@ public class Discovery extends Device{
         }*/
     }
 
-    private void sendMessageToSingleEndpoint(String endpointId, int imagePart){
+    ///////////// Send message only if we have public key. Add a check
+    private void sendMessageToSingleEndpoint(String endpointId, int imagePart) throws Exception {
+        ///////////// Send message only if we have public key. Add a check
+
         devicesUsedInCurrentCommunication.put(endpointId,imagePart);
         payloadType = PAYLOAD_TYPE_IMAGE;
-        Payload payload = createPayloadFromMat(partsNeededFromImage.get(imagePart));
+
+        PublicKey endpointPublicKey = discoveredDevices.get(endpointId).getPublicKey();
+
+        Payload payload = createPayloadFromMat(partsNeededFromImage.get(imagePart), endpointPublicKey, AESSecretKeyUsedForMessages);
         connectionsClient.sendPayload(endpointId, payload);
     }
 
@@ -154,7 +158,7 @@ public class Discovery extends Device{
     }
 
     public void disconnect() {
-        allDevicesIds.stream().forEach((deviceId)->{
+        discoveredDevices.keySet().forEach((deviceId)->{
             connectionsClient.disconnectFromEndpoint(deviceId);
         });
     }
@@ -171,10 +175,9 @@ public class Discovery extends Device{
 
                     System.out.println(info.getServiceId()); ////////// Check if we need to check this or if it is checked automaticall
 
-                    String authenticationTokenAsName;
-                    // We request connections
+                    String authenticationTokenAsName = null;
                     try {
-                        authenticationTokenAsName = EncryptionUtils.encrypt(SECRET_AUTHENTICATION_TOKEN);
+                        authenticationTokenAsName = getEncryptedAuthenticationToken();
                     } catch (Exception e) {
                         throw new RuntimeException(e);
                     }
@@ -197,7 +200,7 @@ public class Discovery extends Device{
                     // We lost an endpoint.
                     System.out.println("We lost endpoint "+endpointId);
                     //////// !!!!!!!!!! verify if it throws exception when list doesn't contain endpointId !!!!!!!!!!!
-                    allDevicesIds.remove(endpointId);
+                    discoveredDevices.remove(endpointId);
                     updateAllDevicesTextView();
                 }
             };
@@ -224,8 +227,7 @@ public class Discovery extends Device{
                         // We're connected!
                         System.out.println("GRRRRRR CONNECTED");
 
-                        allDevicesIds.add(endpointId);
-                        updateAllDevicesTextView();
+                        sendDeviceInitialInfo(endpointId);
                     } else {
                         // We were unable to connect.
                     }
@@ -242,21 +244,36 @@ public class Discovery extends Device{
         public void onPayloadReceived(String endpointId, Payload payload) {
             Toast.makeText(activity, "Received", Toast.LENGTH_SHORT).show();
 
-            if(payloadType == PAYLOAD_TYPE_IMAGE) { /////// Delete this if
-                PayloadData payloadData = extractDataFromPayload(payload);
-                switch (payloadData.getMessageContentType()){
-                    case Image:
-                        Integer imagePartIndex = devicesUsedInCurrentCommunication.get(endpointId);
+            boolean deviceInfoExistsForEndpoint = discoveredDevices.containsKey(endpointId);
+
+            PayloadData payloadData = null;
+            try {
+                payloadData = deviceInfoExistsForEndpoint ? Common.extractPayloadData(payload, keyPairUsedForAESSecretKEy.getPrivate()) : Common.extractPayloadData(payload);
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+            switch (payloadData.getMessageContentType()){
+                case Image:
+                    Integer imagePartIndex = devicesUsedInCurrentCommunication.get(endpointId);
+                    try {
                         matReceivedBehavior((PayloadMatData)payloadData, endpointId, imagePartIndex);
-                        break;
-                }
-            } else {//if(payloadType == PAYLOAD_TYPE_STRING) {
+                    } catch (Exception e) {
+                        throw new RuntimeException(e);
+                    }
+                    break;
+                case InitialDeviceInfo:
+                    deviceInitialInfoReceivedBehavior((PayloadDeviceInitialInfoData)payloadData, endpointId);
+            }
+
+            /////////////////// CODE FOR BATTERY USAGE
+                /*
                 batteryUsage = new String(payload.asBytes());
                 Toast.makeText(activity, "S-a ajuns", Toast.LENGTH_SHORT).show();
 
                 TextView batteryTextView = activity.findViewById(R.id.batteryView);
                 batteryTextView.setText(batteryUsage);
-            }
+                 */
+
         }
 
         @Override
@@ -266,7 +283,12 @@ public class Discovery extends Device{
         }
     };
 
-    private void matReceivedBehavior(PayloadMatData payloadMatData, String endpointId, int imagePartIndex){
+    private void deviceInitialInfoReceivedBehavior(PayloadDeviceInitialInfoData payloadDeviceInitialInfoData, String endpointId) {
+        DeviceInitialInfo deviceInitialInfo = payloadDeviceInitialInfoData.getDeviceInitialInfo();
+        discoveredDevices.put(endpointId,deviceInitialInfo);
+        updateAllDevicesTextView();
+    }
+    private void matReceivedBehavior(PayloadMatData payloadMatData, String endpointId, int imagePartIndex) throws Exception {
         Mat receivedMat = payloadMatData.getImage();
 
         System.out.println("Zoicanel RECEIVER DISCOVERY " + imagePartIndex);
@@ -332,7 +354,11 @@ public class Discovery extends Device{
         sendButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                sendMessage(matImageFromGallery);
+                try {
+                    sendMessage(matImageFromGallery);
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
 
                 ImageView imageView = activity.findViewById(R.id.imageView);
                 imageView.setImageBitmap(convertImageToBitmap(matImageFromGallery));
@@ -344,7 +370,7 @@ public class Discovery extends Device{
         TextView allDevicesTextView = activity.findViewById(R.id.allDevices);
 
         String allDevicesIdString = "";
-        for (String s : allDevicesIds)
+        for (String s : discoveredDevices.keySet())
         {
             allDevicesIdString += s + "\t";
         }
@@ -355,5 +381,13 @@ public class Discovery extends Device{
     private void updateBatteryTextView() {
         TextView batteryTextView = activity.findViewById(R.id.batteryView);
         batteryTextView.setText(batteryUsage);
+    }
+    private void sendDeviceInitialInfo(String endpointId){
+        DeviceInitialInfo deviceInitialInfo = new DeviceInitialInfo(keyPairUsedForAESSecretKEy.getPublic(),-1);
+        try {
+            sendDeviceInitialInfo(deviceInitialInfo, endpointId);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
 }

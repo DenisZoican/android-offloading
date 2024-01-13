@@ -7,6 +7,7 @@ import static com.example.bluetoothconnection.communication.Utils.Encrypting.enc
 import static com.example.bluetoothconnection.communication.Utils.Encrypting.encryptWithAES;
 import static com.example.bluetoothconnection.communication.Utils.Encrypting.encryptWithCommonKey;
 
+import com.example.bluetoothconnection.AppConfig;
 import com.example.bluetoothconnection.communication.Entities.DeviceInitialInfo;
 import com.example.bluetoothconnection.communication.PayloadDataEntities.PayloadData;
 import com.example.bluetoothconnection.communication.PayloadDataEntities.PayloadDeviceInitialInfoData;
@@ -31,8 +32,7 @@ import javax.crypto.spec.SecretKeySpec;
 
 public class Common {
     public enum MessageContentType {
-        Image,
-        InitialDeviceInfo
+        InitialDeviceInfo, Image
     }
     public static final Strategy STRATEGY = Strategy.P2P_STAR; //// Use P2P_CLUSTER because in START the central one is the advertiser.
     public static final String SERVICE_ID = "com.example.nearbytest";
@@ -52,53 +52,47 @@ public class Common {
         System.arraycopy(enumBytes, 0, combinedBytes, 0, enumBytes.length);
         System.arraycopy(imageBytes, 0, combinedBytes, enumBytes.length, imageBytes.length);
 
-        return createPayloadWithEncryptedBytes(combinedBytes, publicKey, secretKey);
+        return createPayLoadWithBytes(combinedBytes, publicKey, secretKey);
     }
 
     public static Payload createPayloadFromDeviceInitialInfo(DeviceInitialInfo deviceInitialInfo) throws Exception {
-        // Convert enum to byte array
-        byte[] enumBytes = convertMessageContentTypeToByteArray(MessageContentType.InitialDeviceInfo.ordinal());
+        byte[] deviceInitialInfoBytes = serializeObject(deviceInitialInfo);
 
-        // Convert image (Mat) to byte array
-        byte[] classBytes = serializeObject(deviceInitialInfo);
-
-        // Combine enum and image bytes into a single byte array
-        byte[] combinedBytes = new byte[enumBytes.length + classBytes.length];
-
-        System.arraycopy(enumBytes, 0, combinedBytes, 0, enumBytes.length);
-        System.arraycopy(classBytes, 0, combinedBytes, enumBytes.length, classBytes.length);
-
-        return createPayloadWithEncryptedBytes(combinedBytes);
+        return createPayloadWithEncryptedBytesUsingCommonKey(deviceInitialInfoBytes);
     }
 
     public static PayloadData extractDataFromPayload(Payload payload, PrivateKey privateKey) throws Exception {
         // Extract byte array from the payload
         byte[] payloadBytes = payload.asBytes();
-        byte[] decryptedContentBytes = getDecryptedContentBytes(payloadBytes, privateKey);
+
+        byte[] decryptedContentBytes = getContentBytes(payloadBytes, privateKey);
 
         int messageContentTypeValue = convertByteArrayToMessageContentType(decryptedContentBytes); /// Use just first 4 bytes from here
         MessageContentType messageContentType = MessageContentType.values()[messageContentTypeValue];
 
-        byte[] contentBytes = new byte[decryptedContentBytes.length - MESSAGE_CONTENT_TYPE_LENGTH];
-        System.arraycopy(decryptedContentBytes, MESSAGE_CONTENT_TYPE_LENGTH, contentBytes, 0, contentBytes.length);
+        byte[] messageBytes = new byte[decryptedContentBytes.length - MESSAGE_CONTENT_TYPE_LENGTH];
+        System.arraycopy(decryptedContentBytes, MESSAGE_CONTENT_TYPE_LENGTH, messageBytes, 0, messageBytes.length);
 
         switch (messageContentType) {
             case Image:
-                return extractMatPayloadData(contentBytes);
+                return extractMatPayloadData(messageBytes);
             default:
-                return new PayloadData(MessageContentType.InitialDeviceInfo);
+                return new PayloadData(MessageContentType.Image);
         }
     }
 
-    public static PayloadData extractDataFromPayload(Payload payload) throws Exception {
+    public static PayloadData extractDeviceInitialInfoFromPayload(Payload payload) throws Exception {
         // Extract byte array from the payload
         byte[] payloadBytes = payload.asBytes();
         byte[] decryptedBytes = decryptWithCommonKey(payloadBytes);
 
-        byte[] contentBytes = new byte[decryptedBytes.length - 4];
-        System.arraycopy(decryptedBytes, 4, contentBytes, 0, contentBytes.length);
+        return extractDeviceInitialInfoFromBytes(decryptedBytes);
+    }
 
-        return extractDataFromPayload(contentBytes);
+    private static  byte[] getContentBytes(byte[] payloadBytes, PrivateKey privateKey) throws Exception {
+        return Boolean.parseBoolean(AppConfig.getShouldEncryptData())
+                ? getDecryptedContentBytes(payloadBytes, privateKey)
+                : payloadBytes;
     }
 
     private static byte[] getDecryptedContentBytes(byte[] payloadBytes, PrivateKey privateKey) throws Exception {
@@ -112,7 +106,7 @@ public class Common {
         return decryptWithAES(encryptedBytes, new SecretKeySpec(decryptedSecretKey, "AES"));
     }
 
-    private static Payload createPayloadWithEncryptedBytes(byte[] bytes) throws Exception {
+    private static Payload createPayloadWithEncryptedBytesUsingCommonKey(byte[] bytes) throws Exception {
         byte[] encryptedBytes = encryptWithCommonKey(bytes);
         // Create a payload from the combined byte array
         return Payload.fromBytes(encryptedBytes);
@@ -132,7 +126,16 @@ public class Common {
         return Payload.fromBytes(combinedData);
     }
 
-    private static PayloadDeviceInitialInfoData extractDataFromPayload(byte[] byteArray){
+    private static Payload createPayLoadWithBytes(byte[] bytes, PublicKey publicKey, SecretKey secretKey) throws Exception {
+        return Boolean.parseBoolean(AppConfig.getShouldEncryptData())
+                ? createPayloadWithEncryptedBytes(bytes, publicKey, secretKey)
+                : createPayloadWithBytesWithoutEncryption(bytes);
+    }
+    private static Payload createPayloadWithBytesWithoutEncryption(byte[] bytes){
+        return Payload.fromBytes(bytes);
+    }
+
+    private static PayloadDeviceInitialInfoData extractDeviceInitialInfoFromBytes(byte[] byteArray){
         DeviceInitialInfo deviceInitialInfo = deserializeObject(byteArray, DeviceInitialInfo.class);
 
         return new PayloadDeviceInitialInfoData(deviceInitialInfo);

@@ -237,7 +237,7 @@ public class Discovery extends Device{
 
             PayloadData payloadData = null;
             try {
-                payloadData = isDeviceInitialInfoPayload ? extractDataFromPayload(payload) : extractDataFromPayload(payload, keyPairUsedForAESSecretKEy.getPrivate());
+                payloadData = isDeviceInitialInfoPayload ? Common.extractDeviceInitialInfoFromPayload(payload) : extractDataFromPayload(payload, keyPairUsedForAESSecretKEy.getPrivate());
             } catch (Exception e) {
                 throw new RuntimeException(e);
             }

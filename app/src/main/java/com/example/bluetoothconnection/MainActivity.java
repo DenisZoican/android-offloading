@@ -43,7 +43,6 @@ public class MainActivity extends AppCompatActivity {
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode,permissions,grantResults);
-        System.out.println("GRRRRRRRRRRRR");
         /////////////////// !!!!!!!!!!!! SHOULD ADD HERE LOGIC BECAUSE HERE WE KNOW THAT WE HAVE PERMISSIONS
         if (requestCode == Permissions.MY_PERMISSIONS_REQUEST_NEARBY_WIFI_DEVICES) {
             if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
@@ -57,8 +56,10 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        System.out.println("GRRRRRRRRRRRR OpenCV"+ OpenCVLoader.initDebug());
 
+        OpenCVLoader.initDebug();
+
+        initializeConfigValues();
 
         // Initialize the Nearby Connections client
         connectionsClient = Nearby.getConnectionsClient(this); //may be deleted because it's used just here
@@ -66,7 +67,6 @@ public class MainActivity extends AppCompatActivity {
         Permissions permissions = new Permissions(this);
         permissions.checkAllPermissions(); //// !!!! When it throws an error, where do you go to check the error?
         // Permission is already granted
-        System.out.println("GRRRRRRRRRRRR  GRANTED");
 
         boolean isAdvertise = !Build.MODEL.equals("Pixel 7");
         try {
@@ -95,6 +95,11 @@ public class MainActivity extends AppCompatActivity {
         ActivityManager.MemoryInfo memoryInfo = new ActivityManager.MemoryInfo();
         activityManager.getMemoryInfo(memoryInfo);
         return memoryInfo.availMem;
+    }
+
+    private void initializeConfigValues(){
+        AppConfig.initialize(this);
+        AppConfig.setShouldEncryptData(false);
     }
 
     private void initializeUploadButton(){

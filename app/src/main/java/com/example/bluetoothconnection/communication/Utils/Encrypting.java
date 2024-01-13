@@ -84,6 +84,20 @@ public class Encrypting {
         return null;
     }
 
+    public static byte[] encryptRSAWithPublicKey(byte[] content, PublicKey publicKey) throws Exception {
+        Cipher cipher = Cipher.getInstance("RSA");
+        cipher.init(Cipher.ENCRYPT_MODE, publicKey);
+        return cipher.doFinal(content);
+    }
+
+    // Decrypt with Private Key
+    public static byte[] decryptRSAWithPrivateKey(byte[] encryptedBytes, PrivateKey privateKey) throws Exception {
+        Cipher cipher = Cipher.getInstance("RSA");
+        cipher.init(Cipher.DECRYPT_MODE, privateKey);
+        byte[] decryptedBytes = cipher.doFinal(encryptedBytes);
+        return decryptedBytes;
+    }
+
     public static SecretKey generateAESKey() throws Exception {
         KeyGenerator keyGenerator = KeyGenerator.getInstance("AES");
         keyGenerator.init(256); // Use a suitable key size
@@ -100,20 +114,6 @@ public class Encrypting {
         Cipher cipher = Cipher.getInstance("AES");
         cipher.init(Cipher.DECRYPT_MODE, secretKey);
         byte[] decryptedBytes = cipher.doFinal(encryptedData);
-        return decryptedBytes;
-    }
-
-    public static byte[] encryptRSAWithPublicKey(byte[] content, PublicKey publicKey) throws Exception {
-        Cipher cipher = Cipher.getInstance("RSA");
-        cipher.init(Cipher.ENCRYPT_MODE, publicKey);
-        return cipher.doFinal(content);
-    }
-
-    // Decrypt with Private Key
-    public static byte[] decryptRSAWithPrivateKey(byte[] encryptedBytes, PrivateKey privateKey) throws Exception {
-        Cipher cipher = Cipher.getInstance("RSA");
-        cipher.init(Cipher.DECRYPT_MODE, privateKey);
-        byte[] decryptedBytes = cipher.doFinal(encryptedBytes);
         return decryptedBytes;
     }
 }

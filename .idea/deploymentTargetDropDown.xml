@@ -7,12 +7,12 @@
         <deviceKey>
           <Key>
             <type value="SERIAL_NUMBER" />
-            <value value="adb-28221FDH200A60-ifMEAQ._adb-tls-connect._tcp" />
+            <value value="adb-R3CRC09CACR-npnFpy._adb-tls-connect._tcp" />
           </Key>
         </deviceKey>
       </Target>
     </runningDeviceTargetSelectedWithDropDown>
-    <timeTargetWasSelectedWithDropDown value="2024-01-12T22:28:40.301633100Z" />
+    <timeTargetWasSelectedWithDropDown value="2024-01-13T10:58:56.013389500Z" />
     <runningDeviceTargetsSelectedWithDialog>
       <Target>
         <type value="RUNNING_DEVICE_TARGET" />

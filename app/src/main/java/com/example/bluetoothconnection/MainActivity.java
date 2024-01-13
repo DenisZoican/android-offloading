@@ -49,6 +49,7 @@ import java.util.List;
 public class MainActivity extends AppCompatActivity {
     private ConnectionsClient connectionsClient;
     Device device;
+    private Context context;
 
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
@@ -71,6 +72,7 @@ public class MainActivity extends AppCompatActivity {
         System.out.println("GRRRRRRRRRRRR");
         // Initialize the Nearby Connections client
         connectionsClient = Nearby.getConnectionsClient(this); //may be deleted because it's used just here
+        context = getApplicationContext();
 
         Permissions permissions = new Permissions(this);
         permissions.checkAllPermissions(); //// !!!! When it throws an error, where do you go to check the error?
@@ -78,7 +80,7 @@ public class MainActivity extends AppCompatActivity {
         System.out.println("GRRRRRRRRRRRR  GRANTED");
 
         boolean isAdvertise = !Build.MODEL.equals("Pixel 7");
-        device = isAdvertise ? new Advertise(this, connectionsClient) : new Discovery(this, connectionsClient);
+        device = isAdvertise ? new Advertise(this.context, this, connectionsClient) : new Discovery(this.context, this, connectionsClient);
 
         device.start();
         if(isAdvertise) {

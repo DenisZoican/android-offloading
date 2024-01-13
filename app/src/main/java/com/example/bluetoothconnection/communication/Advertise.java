@@ -10,6 +10,11 @@ import static com.example.bluetoothconnection.opencv.ImageProcessing.convertImag
 import static com.example.bluetoothconnection.opencv.ImageProcessing.processImage;
 
 import android.app.Activity;
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
+import android.os.BatteryManager;
 import android.view.View;
 import android.widget.Button;
 import android.widget.ImageView;
@@ -31,8 +36,12 @@ import org.opencv.core.Mat;
 public class Advertise extends Device {
     private String discoveryDeviceId; ///// Rename it later
     private String payloadType;
-    public Advertise(Activity activity, ConnectionsClient connectionsClient){
-        super(activity, connectionsClient);
+
+    public Advertise(Context context, Activity activity, ConnectionsClient connectionsClient){
+        super(context, activity, connectionsClient);
+
+        IntentFilter filter = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
+        context.registerReceiver(batteryReceiver, filter);
     }
 
     public void start(){
@@ -62,6 +71,7 @@ public class Advertise extends Device {
         connectionsClient.sendPayload(discoveryDeviceId, processedPayload);
     }
     public void sendBatteryUsage(String batteryMessage) {
+
         System.out.println("Send batteryMessage from advertise");
         byte[] toSend = batteryMessage.getBytes();
         Payload payload = Payload.fromBytes(toSend);
@@ -152,6 +162,29 @@ public class Advertise extends Device {
             // Payload transfer status updated.
         }
     };
+
+    private final BroadcastReceiver batteryReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            if (Intent.ACTION_BATTERY_CHANGED.equals(intent.getAction())) {
+                // Retrieve battery level
+                int level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);
+
+                // Retrieve battery scale (maximum level)
+                int scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, -1);
+
+                // Calculate battery percentage
+                float batteryPercentage = (level / (float) scale) * 100;
+
+                // Send battery usage as payload to the connected device
+                //sendPayload(String.valueOf(batteryPercentage));
+
+                System.out.println("Battery Level: " + batteryPercentage + "%");
+                Toast.makeText(activity, "Battery Level: " + batteryPercentage + "%", Toast.LENGTH_SHORT).show();
+            }
+        }
+    };
+
 
     private void updateAllDevicesTextView(){
         TextView allDevicesTextView = activity.findViewById(R.id.allDevices);

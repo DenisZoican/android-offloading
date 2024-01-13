@@ -28,6 +28,7 @@ public class Permissions {
             Manifest.permission.BLUETOOTH_SCAN,
             Manifest.permission.BLUETOOTH_ADVERTISE,
             Manifest.permission.NEARBY_WIFI_DEVICES,
+            Manifest.permission.BATTERY_STATS,
             Manifest.permission.ACCESS_FINE_LOCATION,
             Manifest.permission.READ_EXTERNAL_STORAGE,
             Manifest.permission.WRITE_EXTERNAL_STORAGE,

@@ -10,6 +10,7 @@ import static com.example.bluetoothconnection.opencv.ImageProcessing.convertImag
 import static com.example.bluetoothconnection.opencv.ImageProcessing.replaceMat;
 
 import android.app.Activity;
+import android.content.Context;
 import android.graphics.Bitmap;
 import android.util.ArraySet;
 import android.view.View;
@@ -52,8 +53,8 @@ public class Discovery extends Device{
     private Map<Integer, Mat> partsNeededFromImage;
     private Mat imageFromGallery;
 
-    public Discovery(Activity activity, ConnectionsClient connectionsClient){
-        super(activity, connectionsClient);
+    public Discovery(Context context, Activity activity, ConnectionsClient connectionsClient){
+        super(context, activity, connectionsClient);
     }
 
     public void start() {

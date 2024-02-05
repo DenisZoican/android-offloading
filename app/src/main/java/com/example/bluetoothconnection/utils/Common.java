@@ -50,17 +50,4 @@ public class Common {
         System.arraycopy(array2, 0, combined, array1.length, array2.length);
         return combined;
     }
-
-    private static byte[] serializeObject(Serializable object) {
-        try (ByteArrayOutputStream bos = new ByteArrayOutputStream();
-             ObjectOutputStream oos = new ObjectOutputStream(bos)) {
-
-            oos.writeObject(object);
-            return bos.toByteArray();
-
-        } catch (IOException e) {
-            e.printStackTrace();
-            return null;
-        }
-    }
 }

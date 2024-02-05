@@ -10,6 +10,11 @@ import static com.example.bluetoothconnection.opencv.ImageProcessing.convertImag
 import static com.example.bluetoothconnection.opencv.ImageProcessing.processImage;
 
 import android.app.Activity;
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
+import android.os.BatteryManager;
 import android.view.View;
 import android.widget.Button;
 import android.widget.ImageView;
@@ -38,8 +43,13 @@ import java.security.PublicKey;
 public class Advertise extends Device {
     private String discoveryDeviceId;
     private PublicKey discoveryDevicePublicKey;
-    public Advertise(Activity activity, ConnectionsClient connectionsClient) throws Exception {
-        super(activity, connectionsClient);
+    private static float batteryLevel;
+    public Context context;
+    public Advertise(Context context, Activity activity, ConnectionsClient connectionsClient) throws Exception {
+        super(context, activity, connectionsClient);
+
+        IntentFilter filter = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
+        context.registerReceiver(batteryReceiver, filter);
     }
 
     public void start() throws Exception {
@@ -70,12 +80,12 @@ public class Advertise extends Device {
         Payload processedPayload = createPayloadFromMat(image, discoveryDevicePublicKey, AESSecretKeyUsedForMessages);
         connectionsClient.sendPayload(discoveryDeviceId, processedPayload);
     }
-    public void sendBatteryUsage(String batteryMessage) {
-        System.out.println("Send batteryMessage from advertise");
+    //delete
+    /*public void sendBatteryUsage(String batteryMessage) {
         byte[] toSend = batteryMessage.getBytes();
         Payload payload = Payload.fromBytes(toSend);
         connectionsClient.sendPayload(discoveryDeviceId, payload);
-    }
+    }*/
     public void disconnect() {
         connectionsClient.disconnectFromEndpoint(discoveryDeviceId);
     }
@@ -144,6 +154,8 @@ public class Advertise extends Device {
                 case InitialDeviceInfo:
                     deviceInitialInfoReceivedBehavior((PayloadDeviceInitialInfoData) payloadData);
                     break;
+                case Error:
+                    Toast.makeText(activity, "Hash didn't match", Toast.LENGTH_SHORT).show();
 
             }
         }
@@ -176,13 +188,31 @@ public class Advertise extends Device {
     }
 
     private void sendDeviceInitialInfo(String endpointId){
-        DeviceInitialInfo deviceInitialInfo = new DeviceInitialInfo(keyPairUsedForAESSecretKEy.getPublic(),29);
+        DeviceInitialInfo deviceInitialInfo = new DeviceInitialInfo(keyPairUsedForAESSecretKEy.getPublic(),batteryLevel);
         try {
             sendDeviceInitialInfo(deviceInitialInfo, endpointId);
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
     }
+
+    private final BroadcastReceiver batteryReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            if (Intent.ACTION_BATTERY_CHANGED.equals(intent.getAction())) {
+               //if(batteryLevel < 0.0) {
+                    // Retrieve battery level
+                    int level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);
+
+                    // Retrieve battery scale (maximum level)
+                    int scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, -1);
+
+                    // Calculate battery percentage
+                    batteryLevel = (level / (float) scale) * 100;
+                //}
+            }
+        }
+    };
 
     ////// UI stuff
     private void updateAllDevicesTextView(){
@@ -193,7 +223,8 @@ public class Advertise extends Device {
 
     private void initializeUiElements(){
         initializeSendButton();
-        initializeSendBatteryButton();
+        //delete
+        //initializeSendBatteryButton();
     }
 
     private void initializeSendButton(){
@@ -205,8 +236,8 @@ public class Advertise extends Device {
             }
         });
     }
-
-    private void initializeSendBatteryButton() {
+    //delete
+    /*private void initializeSendBatteryButton() {
         Button sendButton = activity.findViewById(R.id.buttonBattery);
         sendButton.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -214,5 +245,5 @@ public class Advertise extends Device {
                 sendBatteryUsage("Baterie:50%");
             }
         });
-    }
+    }*/
 }

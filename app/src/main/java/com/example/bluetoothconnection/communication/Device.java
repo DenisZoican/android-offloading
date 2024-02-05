@@ -5,6 +5,7 @@ import static com.example.bluetoothconnection.communication.Utils.Encrypting.gen
 import static com.example.bluetoothconnection.communication.Utils.Encrypting.generateRSAKeyPair;
 
 import android.app.Activity;
+import android.content.Context;
 
 import com.example.bluetoothconnection.communication.Entities.DeviceInitialInfo;
 import com.google.android.gms.nearby.connection.ConnectionsClient;
@@ -23,10 +24,12 @@ public abstract class Device {
     protected final SecretKey AESSecretKeyUsedForMessages;
     protected Activity activity;
     protected final ConnectionsClient connectionsClient;
+    public Context context;
 
-    public Device(Activity activity, ConnectionsClient connectionsClient) throws Exception {
+    public Device(Context context, Activity activity, ConnectionsClient connectionsClient) throws Exception {
         this.activity = activity;
         this.connectionsClient = connectionsClient;
+        this.context = context;
 
         keyPairUsedForAESSecretKEy = generateRSAKeyPair();
         AESSecretKeyUsedForMessages = generateAESKey();

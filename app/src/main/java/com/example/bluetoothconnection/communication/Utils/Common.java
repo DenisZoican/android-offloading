@@ -15,6 +15,7 @@ import com.example.bluetoothconnection.communication.PayloadDataEntities.Payload
 import com.google.android.gms.nearby.connection.Payload;
 import com.google.android.gms.nearby.connection.Strategy;
 
+import static com.example.bluetoothconnection.communication.Utils.Hashing.calculateHash;
 import static com.example.bluetoothconnection.utils.Common.combineArrays;
 import static com.example.bluetoothconnection.utils.Common.deserializeObject;
 import static com.example.bluetoothconnection.utils.Common.serializeObject;
@@ -26,18 +27,20 @@ import org.opencv.imgcodecs.Imgcodecs;
 import java.nio.ByteBuffer;
 import java.security.PrivateKey;
 import java.security.PublicKey;
+import java.util.Arrays;
 
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
 
 public class Common {
     public enum MessageContentType {
-        InitialDeviceInfo, Image
+        InitialDeviceInfo, Image, Error, UndefinedType
     }
     public static final Strategy STRATEGY = Strategy.P2P_STAR; //// Use P2P_CLUSTER because in START the central one is the advertiser.
     public static final String SERVICE_ID = "com.example.nearbytest";
     public static final int ENCRYPTED_SECRET_KEY_LENGTH = 256;
     public static final int MESSAGE_CONTENT_TYPE_LENGTH = 4;
+    public static final int HASH_LENGTH = 32; //bytes
 
     public static Payload createPayloadFromMat(Mat image, PublicKey publicKey, SecretKey secretKey) throws Exception {
         // Convert enum to byte array
@@ -61,12 +64,34 @@ public class Common {
         return createPayloadWithEncryptedBytesUsingCommonKey(deviceInitialInfoBytes);
     }
 
+    public static byte[] extractPayloadBytesWithoutHash (byte[] payloadWithHash) throws Exception {
+        byte[] receivedHash = new byte[HASH_LENGTH];
+        System.arraycopy(payloadWithHash, payloadWithHash.length-HASH_LENGTH, receivedHash, 0, receivedHash.length);
+
+        byte[] payloadWithoutHashBytes = new byte[payloadWithHash.length-HASH_LENGTH];
+        System.arraycopy(payloadWithHash, 0, payloadWithoutHashBytes, 0, payloadWithHash.length-HASH_LENGTH);
+        byte[] recalculateHash = calculateHash(payloadWithoutHashBytes);
+        if(!Arrays.equals(receivedHash, recalculateHash)) {
+            System.out.println("The received hash doesn't match");
+            return null;
+        }
+        return payloadWithoutHashBytes;
+    }
+
     public static PayloadData extractDataFromPayload(Payload payload, PrivateKey privateKey) throws Exception {
         // Extract byte array from the payload
         byte[] payloadBytes = payload.asBytes();
-
-        byte[] decryptedContentBytes = getContentBytes(payloadBytes, privateKey);
-
+        byte[] decryptedContentBytes;
+        byte[] toBeDecryptedBytes;
+        if(Boolean.parseBoolean(AppConfig.getShouldCreateHash())) {
+            toBeDecryptedBytes = extractPayloadBytesWithoutHash(payloadBytes);
+            if(toBeDecryptedBytes == null) {
+                return new PayloadData(MessageContentType.Error);
+            }
+        } else {
+            toBeDecryptedBytes = getContentBytes(payloadBytes, privateKey);
+        }
+        decryptedContentBytes = getContentBytes(toBeDecryptedBytes, privateKey);
         int messageContentTypeValue = convertByteArrayToMessageContentType(decryptedContentBytes); /// Use just first 4 bytes from here
         MessageContentType messageContentType = MessageContentType.values()[messageContentTypeValue];
 
@@ -77,7 +102,7 @@ public class Common {
             case Image:
                 return extractMatPayloadData(messageBytes);
             default:
-                return new PayloadData(MessageContentType.Image);
+                return new PayloadData(MessageContentType.UndefinedType);
         }
     }
 
@@ -127,9 +152,15 @@ public class Common {
     }
 
     private static Payload createPayLoadWithBytes(byte[] bytes, PublicKey publicKey, SecretKey secretKey) throws Exception {
-        return Boolean.parseBoolean(AppConfig.getShouldEncryptData())
+        Payload payloadWithContent = Boolean.parseBoolean(AppConfig.getShouldEncryptData())
                 ? createPayloadWithEncryptedBytes(bytes, publicKey, secretKey)
                 : createPayloadWithBytesWithoutEncryption(bytes);
+
+        if(Boolean.parseBoolean(AppConfig.getShouldCreateHash())) {
+            byte[] combinedPayloadsBytes = combineArrays(payloadWithContent.asBytes(), calculateHash(payloadWithContent.asBytes()));
+            return Payload.fromBytes(combinedPayloadsBytes);
+        }
+        return payloadWithContent;
     }
     private static Payload createPayloadWithBytesWithoutEncryption(byte[] bytes){
         return Payload.fromBytes(bytes);

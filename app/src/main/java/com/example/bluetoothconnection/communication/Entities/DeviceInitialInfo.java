@@ -10,9 +10,9 @@ import javax.crypto.SecretKey;
 public class DeviceInitialInfo implements Serializable {
     private final PublicKey publicKey;
     @Nullable
-    private final int batteryPercentage;
+    private final float batteryPercentage;
 
-    public DeviceInitialInfo(PublicKey publicKey, int batteryPercentage) {
+    public DeviceInitialInfo(PublicKey publicKey, float batteryPercentage) {
         this.publicKey = publicKey;
         this.batteryPercentage = batteryPercentage;
     }
@@ -21,7 +21,7 @@ public class DeviceInitialInfo implements Serializable {
         return publicKey;
     }
 
-    public int getBatteryPercentage() {
+    public float getBatteryPercentage() {
         return batteryPercentage;
     }
 }

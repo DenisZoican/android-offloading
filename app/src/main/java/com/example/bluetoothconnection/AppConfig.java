@@ -7,7 +7,7 @@ public class AppConfig {
     private static final String PREFS_NAME = "AppPrefs";
 
     private static final String SHOULD_ENCRYPT_DATA = "should-encrypt-data";
-
+    private static final String SHOULD_CREATE_HASH = "should-create-hash";
     private static SharedPreferences preferences = null;
 
     // Initialize the SharedPreferences instance
@@ -24,4 +24,14 @@ public class AppConfig {
     public static String getShouldEncryptData() {
         return preferences.getString(SHOULD_ENCRYPT_DATA, null);
     }
+
+    public static void setShouldCreateHash(Boolean value) {
+        preferences.edit().putString(SHOULD_CREATE_HASH, value.toString()).apply();
+    }
+
+    public static String getShouldCreateHash() {
+        return preferences.getString(SHOULD_CREATE_HASH, null);
+    }
+
+
 }

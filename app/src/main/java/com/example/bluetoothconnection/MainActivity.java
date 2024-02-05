@@ -39,6 +39,7 @@ import java.io.InputStream;
 public class MainActivity extends AppCompatActivity {
     private ConnectionsClient connectionsClient;
     Device device;
+    private Context context;
 
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
@@ -57,6 +58,8 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
+        context = getApplicationContext();
+
         OpenCVLoader.initDebug();
 
         initializeConfigValues();
@@ -70,7 +73,7 @@ public class MainActivity extends AppCompatActivity {
 
         boolean isAdvertise = !Build.MODEL.equals("Pixel 7");
         try {
-            device = isAdvertise ? new Advertise(this, connectionsClient) : new Discovery(this, connectionsClient);
+            device = isAdvertise ? new Advertise(this.context, this, connectionsClient) : new Discovery(this.context, this, connectionsClient);
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
@@ -99,7 +102,8 @@ public class MainActivity extends AppCompatActivity {
 
     private void initializeConfigValues(){
         AppConfig.initialize(this);
-        AppConfig.setShouldEncryptData(false);
+        AppConfig.setShouldEncryptData(true);
+        AppConfig.setShouldCreateHash(true);
     }
 
     private void initializeUploadButton(){

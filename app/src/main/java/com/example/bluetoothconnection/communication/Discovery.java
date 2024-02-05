@@ -10,6 +10,7 @@ import static com.example.bluetoothconnection.opencv.ImageProcessing.convertImag
 import static com.example.bluetoothconnection.opencv.ImageProcessing.replaceMat;
 
 import android.app.Activity;
+import android.content.Context;
 import android.graphics.Bitmap;
 import android.view.View;
 import android.widget.Button;
@@ -18,6 +19,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import com.example.bluetoothconnection.R;
+import com.example.bluetoothconnection.communication.Entities.CommunicationDetails;
 import com.example.bluetoothconnection.communication.Entities.DeviceInitialInfo;
 import com.example.bluetoothconnection.communication.PayloadDataEntities.PayloadData;
 import com.example.bluetoothconnection.communication.PayloadDataEntities.PayloadDeviceInitialInfoData;
@@ -50,17 +52,21 @@ import java.security.PublicKey;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Random;
 
 public class Discovery extends Device{
     private Map<String,DeviceInitialInfo> discoveredDevices = new HashMap<>();
-    private String batteryUsage = new String();
-    private Map<String,Integer> devicesUsedInCurrentCommunication;
+    //delete
+    //private String batteryUsage = new String();
+    private Map<String, CommunicationDetails> devicesUsedInCurrentCommunicationDetails;
     private Map<Integer, Mat> partsNeededFromImage;
     private Mat matImageFromGallery;
     private String urlPathImageFromGallery;
+    private final int MAX_RETRIES = 10;
 
-    public Discovery(Activity activity, ConnectionsClient connectionsClient) throws Exception {
-        super(activity, connectionsClient);
+    public Discovery(Context context, Activity activity, ConnectionsClient connectionsClient) throws Exception {
+        super(context, activity, connectionsClient);
     }
 
     public void start() {
@@ -73,7 +79,7 @@ public class Discovery extends Device{
                 .addOnSuccessListener(
                         (Void unused) -> {
                             // We're discovering nearby endpoints!
-                            Toast.makeText(activity, "We are advertising.", Toast.LENGTH_SHORT).show();
+                            Toast.makeText(activity, "We are discovering.", Toast.LENGTH_SHORT).show();
                         })
                 .addOnFailureListener(
                         (Exception e) -> {
@@ -112,7 +118,7 @@ public class Discovery extends Device{
         initializeImageValues(numberOfParts);
 
         String endpointId = discoveredDevices.keySet().iterator().next();
-        sendMessageToSingleEndpoint(endpointId, 0);
+        sendImagePartToSingleEndpoint(endpointId, 0);
         /*
         //// Real dividing and sending images. Do not delete. Will be used in future
         List<Mat> divideImages = ImageProcessing.divideImages(imageFromGallery,allDevicesIds.size());
@@ -129,9 +135,15 @@ public class Discovery extends Device{
     }
 
     ///////////// Send message only if we have public key. Add a check
-    private void sendMessageToSingleEndpoint(String endpointId, int imagePart) throws Exception {
+    private void sendImagePartToSingleEndpoint(String endpointId, int imagePart) throws Exception {
         ///////////// Send message only if we have public key. Add a check
-        devicesUsedInCurrentCommunication.put(endpointId,imagePart);
+        if(devicesUsedInCurrentCommunicationDetails.containsKey(endpointId)) {
+            CommunicationDetails communicationDetails = devicesUsedInCurrentCommunicationDetails.get(endpointId);
+            communicationDetails.incrementFailedAttempts();
+        } else {
+            CommunicationDetails communicationDetails = new CommunicationDetails(imagePart);
+            devicesUsedInCurrentCommunicationDetails.put(endpointId,communicationDetails);
+        }
 
         PublicKey endpointPublicKey = discoveredDevices.get(endpointId).getPublicKey();
 
@@ -146,7 +158,7 @@ public class Discovery extends Device{
             this.partsNeededFromImage.put(i,divideImages.get(i));
         }
 
-        this.devicesUsedInCurrentCommunication = new HashMap<>();
+        this.devicesUsedInCurrentCommunicationDetails = new HashMap<>();
     }
 
     public void disconnect() {
@@ -189,8 +201,9 @@ public class Discovery extends Device{
                 public void onEndpointLost(String endpointId) {
                     // We lost an endpoint.
                     //////// !!!!!!!!!! verify if it throws exception when list doesn't contain endpointId !!!!!!!!!!!
-                    discoveredDevices.remove(endpointId);
-                    updateAllDevicesTextView();
+                    //////////////////put it back, removed for when entering case PayloadTransferUpdate.Status.FAILURE//////////////////////////////////////
+                    //discoveredDevices.remove(endpointId);
+                    //updateAllDevicesTextView();
                 }
             };
 
@@ -243,7 +256,7 @@ public class Discovery extends Device{
             }
             switch (payloadData.getMessageContentType()){
                 case Image:
-                    Integer imagePartIndex = devicesUsedInCurrentCommunication.get(endpointId);
+                    Integer imagePartIndex = devicesUsedInCurrentCommunicationDetails.get(endpointId).getImagePart();
                     try {
                         matReceivedBehavior((PayloadMatData)payloadData, endpointId, imagePartIndex);
                     } catch (Exception e) {
@@ -252,6 +265,9 @@ public class Discovery extends Device{
                     break;
                 case InitialDeviceInfo:
                     deviceInitialInfoReceivedBehavior((PayloadDeviceInitialInfoData)payloadData, endpointId);
+                    break;
+                case Error:
+                    Toast.makeText(activity, "Hash didn't match", Toast.LENGTH_SHORT).show();
             }
 
             /////////////////// CODE FOR BATTERY USAGE
@@ -268,7 +284,35 @@ public class Discovery extends Device{
         @Override
         public void onPayloadTransferUpdate(String endpointId, PayloadTransferUpdate update) {
             // Payload transfer status updated.
-            System.out.println("endpoint " + endpointId + update.toString());
+            // Handle payload transfer updates
+            if(devicesUsedInCurrentCommunicationDetails == null) {
+                return;
+            }
+
+            if (update.getStatus() == PayloadTransferUpdate.Status.SUCCESS) {
+                // Payload transfer successful, remove from the list of failed payloads
+                CommunicationDetails comDetails = devicesUsedInCurrentCommunicationDetails.get(endpointId);
+                //////////////////////de ce intra de mai multe ori, de ce comDetails e null
+                if(comDetails != null) {
+                    comDetails.setFailedAttempts(0);
+                }
+            } else if (update.getStatus() == PayloadTransferUpdate.Status.FAILURE) {
+                // Payload transfer failed, check if it's retriable
+                int failedAttempts = devicesUsedInCurrentCommunicationDetails.get(endpointId).getFailedAttempts();
+
+                if (failedAttempts < MAX_RETRIES) {
+                    // Retry the payload
+                    try {
+                        sendImagePartToSingleEndpoint(endpointId, devicesUsedInCurrentCommunicationDetails.get(endpointId).getImagePart());
+                    } catch (Exception e) {
+                        throw new RuntimeException(e);
+                    }
+                } else {
+                    // Maximum retries reached, handle failure
+                    devicesUsedInCurrentCommunicationDetails.remove(endpointId);
+                    //image part should be sent to another endpoint
+                }
+            }
         }
     };
 
@@ -283,12 +327,12 @@ public class Discovery extends Device{
 
         replacePartInImageFromGallery(receivedMat, imagePartIndex);
 
-        devicesUsedInCurrentCommunication.remove(endpointId); ///// This may be a problem. IF we remove an id from different threads, we may have inconsticency.
+        devicesUsedInCurrentCommunicationDetails.remove(endpointId); ///// This may be a problem. IF we remove an id from different threads, we may have inconsticency.
         partsNeededFromImage.remove(imagePartIndex);
 
         if (!partsNeededFromImage.isEmpty()) {
             Integer firstNeededPartIndex = partsNeededFromImage.keySet().iterator().next();
-            sendMessageToSingleEndpoint(endpointId, firstNeededPartIndex);
+            sendImagePartToSingleEndpoint(endpointId, firstNeededPartIndex);
         }
     }
 
@@ -364,16 +408,19 @@ public class Discovery extends Device{
         String allDevicesIdString = "";
         for (String s : discoveredDevices.keySet())
         {
-            allDevicesIdString += s + "\t";
+            DeviceInitialInfo deviceInfo = discoveredDevices.get(s);
+            assert deviceInfo != null;
+            float batteryPercentage = deviceInfo.getBatteryPercentage();
+            allDevicesIdString += s + " - Battery level: " + batteryPercentage + "%" + "\t";
         }
 
         allDevicesTextView.setText(allDevicesIdString);
     }
-
-    private void updateBatteryTextView() {
+    //delete
+    /*private void updateBatteryTextView() {
         TextView batteryTextView = activity.findViewById(R.id.batteryView);
         batteryTextView.setText(batteryUsage);
-    }
+    }*/
     private void sendDeviceInitialInfo(String endpointId){
         DeviceInitialInfo deviceInitialInfo = new DeviceInitialInfo(keyPairUsedForAESSecretKEy.getPublic(),-1);
         try {

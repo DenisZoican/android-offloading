@@ -1,7 +1,5 @@
 package com.example.bluetoothconnection;
 
-import static com.example.bluetoothconnection.communication.Discovery.PICK_IMAGE_REQUEST;
-import static com.example.bluetoothconnection.opencv.ImageProcessing.convertImageToBitmap;
 import static com.example.bluetoothconnection.opencv.ImageProcessing.convertInputStreamToMat;
 
 import com.example.bluetoothconnection.communication.Advertise;
@@ -12,26 +10,21 @@ import com.example.bluetoothconnection.permissions.Permissions;
 import androidx.activity.result.ActivityResult;
 import androidx.activity.result.ActivityResultCallback;
 import androidx.activity.result.ActivityResultLauncher;
-import androidx.activity.result.PickVisualMediaRequest;
 import androidx.activity.result.contract.ActivityResultContracts;
-import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 
-import android.app.Activity;
 import android.app.ActivityManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
-import android.graphics.Bitmap;
+import android.database.Cursor;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.provider.MediaStore;
-import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.ImageView;
-import android.widget.TextView;
 import android.widget.Toast;
 
 import com.google.android.gms.nearby.Nearby;
@@ -40,20 +33,17 @@ import com.google.android.gms.nearby.connection.*;
 import org.opencv.android.OpenCVLoader;
 import org.opencv.core.Mat;
 
-import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.ArrayList;
-import java.util.List;
 
 public class MainActivity extends AppCompatActivity {
     private ConnectionsClient connectionsClient;
     Device device;
+    private Context context;
 
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode,permissions,grantResults);
-        System.out.println("GRRRRRRRRRRRR");
         /////////////////// !!!!!!!!!!!! SHOULD ADD HERE LOGIC BECAUSE HERE WE KNOW THAT WE HAVE PERMISSIONS
         if (requestCode == Permissions.MY_PERMISSIONS_REQUEST_NEARBY_WIFI_DEVICES) {
             if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
@@ -67,20 +57,32 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        System.out.println("GRRRRRRRRRRRR OpenCV"+ OpenCVLoader.initDebug());
-        System.out.println("GRRRRRRRRRRRR");
+
+        context = getApplicationContext();
+
+        OpenCVLoader.initDebug();
+
+        initializeConfigValues();
+
         // Initialize the Nearby Connections client
         connectionsClient = Nearby.getConnectionsClient(this); //may be deleted because it's used just here
 
         Permissions permissions = new Permissions(this);
         permissions.checkAllPermissions(); //// !!!! When it throws an error, where do you go to check the error?
         // Permission is already granted
-        System.out.println("GRRRRRRRRRRRR  GRANTED");
 
         boolean isAdvertise = !Build.MODEL.equals("Pixel 7");
-        device = isAdvertise ? new Advertise(this, connectionsClient) : new Discovery(this, connectionsClient);
+        try {
+            device = isAdvertise ? new Advertise(this.context, this, connectionsClient) : new Discovery(this.context, this, connectionsClient);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
 
-        device.start();
+        try {
+            device.start();
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
         if(isAdvertise) {
             // Start advertising the endpoint
             Toast.makeText(MainActivity.this, "Start adverting", Toast.LENGTH_SHORT).show();  ////////// !!!!!!! Refactor this IF. Maybe make method in class Advertise/Discovery
@@ -98,6 +100,13 @@ public class MainActivity extends AppCompatActivity {
         return memoryInfo.availMem;
     }
 
+    private void initializeConfigValues(){
+        AppConfig.initialize(this);
+        AppConfig.setShouldEncryptData(true);
+        AppConfig.setShouldCreateHash(true);
+    }
+    ////!!!!!!!!!!!!!!!!Aida: nu putem muta asta in Discovery din moment ce luam context din MainActivity
+    //si il pasam ca param pentru Device??????????????????
     private void initializeUploadButton(){
         ActivityResultLauncher<Intent> resultLauncher = registerForActivityResult(
                 new ActivityResultContracts.StartActivityForResult(),
@@ -105,8 +114,10 @@ public class MainActivity extends AppCompatActivity {
                     @Override
                     public void onActivityResult(ActivityResult result) {
                         Uri imageUri = result.getData().getData();
-                        ImageView imageView = findViewById(R.id.imageView);
 
+                        ((Discovery)device).setUrlPathImageFromGallery(getRealPathFromURI(imageUri));
+
+                        ImageView imageView = findViewById(R.id.imageView);
                         imageView.setImageURI(imageUri);
 
                         try {
@@ -114,7 +125,7 @@ public class MainActivity extends AppCompatActivity {
                             if (inputStream != null) {
                                 Mat originalImage = convertInputStreamToMat(inputStream); ////////// Maybe find a simple solution for converting from Uri to mat (not extra step Inputstream)
 
-                                ((Discovery)device).setImageFromGallery(originalImage);
+                                ((Discovery)device).setMatImageFromGallery(originalImage);
                             }
 
                             inputStream.close();
@@ -137,6 +148,16 @@ public class MainActivity extends AppCompatActivity {
                 //sendMessage(imageFromGallery);
             }
         });
+    }
+
+    private String getRealPathFromURI(Uri contentUri) {
+        String[] proj = {MediaStore.Images.Media.DATA};
+        Cursor cursor = getContentResolver().query(contentUri, proj, null, null, null);
+        int column_index = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATA);
+        cursor.moveToFirst();
+        String filePath = cursor.getString(column_index);
+        cursor.close();
+        return filePath;
     }
 
 

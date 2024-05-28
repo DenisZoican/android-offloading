@@ -39,8 +39,6 @@ public class ImageProcessing {
         int subMatHeight = subMat.height();
 
         int heightOffset = beginRowIndex*subMatHeight;
-        System.out.println("Zoicanel Limits are "+destMatHeight+"--"+destMat.width());
-        System.out.println("Zoicanel replace "+(beginRowIndex*subMatHeight)+"---"+(beginRowIndex*subMatHeight+subMatHeight));
         for(int i=heightOffset;i<heightOffset+subMatHeight && i<destMatHeight;i++){
             for(int j=0;j<subMatWidth;j++){
                 System.out.println("Zoicanel "+i+"--"+j);

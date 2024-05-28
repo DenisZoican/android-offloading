@@ -1,13 +1,20 @@
 package com.example.bluetoothconnection.communication;
 
-import static com.example.bluetoothconnection.communication.Common.SERVICE_ID;
-import static com.example.bluetoothconnection.communication.Common.STRATEGY;
-import static com.example.bluetoothconnection.communication.Common.convertMatToPayload;
-import static com.example.bluetoothconnection.communication.Common.convertPayloadToMat;
+import static com.example.bluetoothconnection.communication.Utils.Common.SERVICE_ID;
+import static com.example.bluetoothconnection.communication.Utils.Common.STRATEGY;
+import static com.example.bluetoothconnection.communication.Utils.Common.createPayloadFromMat;
+import static com.example.bluetoothconnection.communication.Utils.Common.extractDataFromPayload;
+import static com.example.bluetoothconnection.communication.Utils.Encrypting.checkAuthenticationToken;
+import static com.example.bluetoothconnection.communication.Utils.Encrypting.getEncryptedAuthenticationToken;
 import static com.example.bluetoothconnection.opencv.ImageProcessing.convertImageToBitmap;
 import static com.example.bluetoothconnection.opencv.ImageProcessing.processImage;
 
 import android.app.Activity;
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
+import android.os.BatteryManager;
 import android.view.View;
 import android.widget.Button;
 import android.widget.ImageView;
@@ -15,6 +22,11 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import com.example.bluetoothconnection.R;
+import com.example.bluetoothconnection.communication.Entities.DeviceInitialInfo;
+import com.example.bluetoothconnection.communication.PayloadDataEntities.PayloadData;
+import com.example.bluetoothconnection.communication.PayloadDataEntities.PayloadDeviceInitialInfoData;
+import com.example.bluetoothconnection.communication.PayloadDataEntities.PayloadMatData;
+import com.example.bluetoothconnection.communication.Utils.Common;
 import com.google.android.gms.nearby.connection.AdvertisingOptions;
 import com.google.android.gms.nearby.connection.ConnectionInfo;
 import com.google.android.gms.nearby.connection.ConnectionLifecycleCallback;
@@ -26,37 +38,54 @@ import com.google.android.gms.nearby.connection.PayloadTransferUpdate;
 
 import org.opencv.core.Mat;
 
+import java.security.PublicKey;
+
 public class Advertise extends Device {
-    private String discoveryDeviceId; ///// Rename it later
-    public Advertise(Activity activity, ConnectionsClient connectionsClient){
-        super(activity, connectionsClient);
+    private String discoveryDeviceId;
+    private PublicKey discoveryDevicePublicKey;
+    private static float batteryLevel;
+    public Context context;
+    public Advertise(Context context, Activity activity, ConnectionsClient connectionsClient) throws Exception {
+        super(context, activity, connectionsClient);
+
+        IntentFilter filter = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
+        context.registerReceiver(batteryReceiver, filter);
     }
 
-    public void start(){
+    public void start() throws Exception {
         activity.setContentView(R.layout.activity_advertise_main);
-        initializeSendButton();
+        initializeUiElements();
 
-        System.out.println("BEGIN ADVER");
         AdvertisingOptions advertisingOptions =
             new AdvertisingOptions.Builder().setStrategy(STRATEGY).build();
 
-        connectionsClient.startAdvertising(this.uniqueName, SERVICE_ID, connectionLifecycleCallback, advertisingOptions)
+        String authenticationTokenAsName = getEncryptedAuthenticationToken();
+        connectionsClient.startAdvertising(authenticationTokenAsName, SERVICE_ID, connectionLifecycleCallback, advertisingOptions)
                 .addOnSuccessListener(
                         (Void unused) -> {
-                            // We're advertising!
-                            System.out.println("SUCCESS ADVER "+this.uniqueName);
+                            Toast.makeText(activity, "Started advertising", Toast.LENGTH_SHORT).show();
                         })
                 .addOnFailureListener(
                         (Exception e) -> {
-                            // We were unable to start advertising.
-                            System.out.println("FAILED ADVER" + e.toString());
+                            Toast.makeText(activity, "Failed to advertise - "+e.toString(), Toast.LENGTH_SHORT).show();
                         });
     }
 
-    public void sendMessage(Mat image) {
-        Payload processedPayload = convertMatToPayload(image);
+    public void sendMessage(Mat image) throws Exception {
+        if(discoveryDevicePublicKey == null){
+            Toast.makeText(activity, "No public key found for discovery device.", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        Payload processedPayload = createPayloadFromMat(image, discoveryDevicePublicKey, AESSecretKeyUsedForMessages);
         connectionsClient.sendPayload(discoveryDeviceId, processedPayload);
     }
+    //delete
+    /*public void sendBatteryUsage(String batteryMessage) {
+        byte[] toSend = batteryMessage.getBytes();
+        Payload payload = Payload.fromBytes(toSend);
+        connectionsClient.sendPayload(discoveryDeviceId, payload);
+    }*/
     public void disconnect() {
         connectionsClient.disconnectFromEndpoint(discoveryDeviceId);
     }
@@ -69,24 +98,23 @@ public class Advertise extends Device {
             new ConnectionLifecycleCallback() {
                 @Override
                 public void onConnectionInitiated(String endpointId, ConnectionInfo connectionInfo) {
-                    System.out.println("GRRRRRR INITIATED");
                     // Automatically accept the connection on both devices.
-                    connectionsClient.acceptConnection(endpointId, payloadCallback);
-                    // Store the endpoint ID for later use.
+                    try {
+                        if(checkAuthenticationToken(connectionInfo.getEndpointName())){
+                            connectionsClient.acceptConnection(endpointId, payloadCallback);
+                        }
+                    } catch (Exception e) {
+                        throw new RuntimeException(e);
+                    }
                 }
 
                 @Override
                 public void onConnectionResult(String endpointId, ConnectionResolution result) {
                     if (result.getStatus().isSuccess()) {
-                        // We're connected!
-                        System.out.println("GRRRRRR CONNECTED");
-
-                        // We should send just if you do the offloading
-                        //sendMessage("info: memory usage");
-
                         discoveryDeviceId = endpointId;
                         updateAllDevicesTextView();
 
+                        sendDeviceInitialInfo(endpointId); ////// SHOULD PUT BATTERY INFO HERE - with love for Aidel
                     } else {
                         // We were unable to connect.
                     }
@@ -100,40 +128,36 @@ public class Advertise extends Device {
     private final PayloadCallback payloadCallback = new PayloadCallback() {  ///// Isn't this the same with discovery???
         @Override
         public void onPayloadReceived(String endpointId, Payload payload) {
-            // We received a payload!
-            System.out.println("DA DA");
-            Toast.makeText(activity, "Received", Toast.LENGTH_SHORT).show();
+            boolean isEndpointTheDiscoveryDevice = discoveryDeviceId == endpointId;
+            if(isEndpointTheDiscoveryDevice){
+                return;
+            }
 
-            Mat receivedMat = convertPayloadToMat(payload);
+            /// Must delete discoveryDevicePublicKey if disconnected from discovery device
+            boolean isDeviceInitialInfoPayload = discoveryDevicePublicKey == null;
+
+            PayloadData payloadData = null;
             try {
-                Thread.sleep(5000);
-            } catch (InterruptedException e) {
+                payloadData =  isDeviceInitialInfoPayload ? Common.extractDeviceInitialInfoFromPayload(payload) : extractDataFromPayload(payload, keyPairUsedForAESSecretKEy.getPrivate());
+            } catch (Exception e) {
                 throw new RuntimeException(e);
             }
 
-            Mat processedMat = processImage(receivedMat);
+            switch (payloadData.getMessageContentType()){
+                case Image:
+                    try {
+                        matReceivedBehavior((PayloadMatData)payloadData);
+                    } catch (Exception e) {
+                        throw new RuntimeException(e);
+                    }
+                    break;
+                case InitialDeviceInfo:
+                    deviceInitialInfoReceivedBehavior((PayloadDeviceInitialInfoData) payloadData);
+                    break;
+                case Error:
+                    Toast.makeText(activity, "Hash didn't match", Toast.LENGTH_SHORT).show();
 
-            ImageView imageView = activity.findViewById(R.id.imageView);
-            imageView.setImageBitmap(convertImageToBitmap(receivedMat));
-
-            sendMessage(processedMat);
-
-            //Mat receivedImage = convertPayloadToMat(payload,500,500); ////////////// Dimensions are false 100%
-
-            //sendMat(receivedImage);
-
-            return;
-            /*Mat processedImage;
-
-            try { ////////// Simulate that we do something to the message
-                Thread.sleep(2000);
-                processedImage = ImageProcessing.processImage(receivedImage);
-            } catch (InterruptedException e) {
-                throw new RuntimeException(e);
             }
-            sendMat(processedImage);
-
-             */
         }
 
         @Override
@@ -142,10 +166,65 @@ public class Advertise extends Device {
         }
     };
 
+    private void deviceInitialInfoReceivedBehavior(PayloadDeviceInitialInfoData payloadDeviceInitialInfoData) {
+        this.discoveryDevicePublicKey = payloadDeviceInitialInfoData.getDeviceInitialInfo().getPublicKey();
+    }
+
+    private void matReceivedBehavior(PayloadMatData payloadMatData) throws Exception {
+        Mat receivedMat = payloadMatData.getImage();
+
+        try {
+            Thread.sleep(5000);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+
+        Mat processedMat = processImage(receivedMat);
+
+        ImageView imageView = activity.findViewById(R.id.imageView);
+        imageView.setImageBitmap(convertImageToBitmap(receivedMat));
+
+        sendMessage(processedMat);
+    }
+
+    private void sendDeviceInitialInfo(String endpointId){
+        DeviceInitialInfo deviceInitialInfo = new DeviceInitialInfo(keyPairUsedForAESSecretKEy.getPublic(),batteryLevel);
+        try {
+            sendDeviceInitialInfo(deviceInitialInfo, endpointId);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private final BroadcastReceiver batteryReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            if (Intent.ACTION_BATTERY_CHANGED.equals(intent.getAction())) {
+               //if(batteryLevel < 0.0) {
+                    // Retrieve battery level
+                    int level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);
+
+                    // Retrieve battery scale (maximum level)
+                    int scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, -1);
+
+                    // Calculate battery percentage
+                    batteryLevel = (level / (float) scale) * 100;
+                //}
+            }
+        }
+    };
+
+    ////// UI stuff
     private void updateAllDevicesTextView(){
         TextView allDevicesTextView = activity.findViewById(R.id.allDevices);
 
         allDevicesTextView.setText(discoveryDeviceId);
+    }
+
+    private void initializeUiElements(){
+        initializeSendButton();
+        //delete
+        //initializeSendBatteryButton();
     }
 
     private void initializeSendButton(){
@@ -157,4 +236,14 @@ public class Advertise extends Device {
             }
         });
     }
+    //delete
+    /*private void initializeSendBatteryButton() {
+        Button sendButton = activity.findViewById(R.id.buttonBattery);
+        sendButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                sendBatteryUsage("Baterie:50%");
+            }
+        });
+    }*/
 }

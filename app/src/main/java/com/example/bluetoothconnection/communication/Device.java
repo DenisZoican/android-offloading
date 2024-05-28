@@ -1,38 +1,46 @@
 package com.example.bluetoothconnection.communication;
 
-import static com.example.bluetoothconnection.utils.Common.getUniqueName;
+import static com.example.bluetoothconnection.communication.Utils.Common.createPayloadFromDeviceInitialInfo;
+import static com.example.bluetoothconnection.communication.Utils.Encrypting.generateAESKey;
+import static com.example.bluetoothconnection.communication.Utils.Encrypting.generateRSAKeyPair;
 
 import android.app.Activity;
+import android.content.Context;
 
-import androidx.appcompat.app.AppCompatActivity;
-
+import com.example.bluetoothconnection.communication.Entities.DeviceInitialInfo;
 import com.google.android.gms.nearby.connection.ConnectionsClient;
+import com.google.android.gms.nearby.connection.Payload;
 
 import org.opencv.core.Mat;
 
-import java.util.EventListener;
-import java.util.Observable;
+import java.security.KeyPair;
 import java.util.function.Consumer;
-import java.util.function.Function;
+
+import javax.crypto.SecretKey;
 
 public abstract class Device {
+    // Key pair for signing and verifying messages
+    protected final KeyPair keyPairUsedForAESSecretKEy;
+    protected final SecretKey AESSecretKeyUsedForMessages;
+    protected Activity activity;
+    protected final ConnectionsClient connectionsClient;
+    public Context context;
 
-    Activity activity;
-    final ConnectionsClient connectionsClient;
-    final String uniqueName = getUniqueName();
-
-    public Consumer<Mat> onPayloadReceivedCallbackFunction;
-
-    public Device(Activity activity, ConnectionsClient connectionsClient){
+    public Device(Context context, Activity activity, ConnectionsClient connectionsClient) throws Exception {
         this.activity = activity;
         this.connectionsClient = connectionsClient;
+        this.context = context;
+
+        keyPairUsedForAESSecretKEy = generateRSAKeyPair();
+        AESSecretKeyUsedForMessages = generateAESKey();
     }
 
-    public void setOnPayloadReceivedCallbackFunction(Consumer<Mat> onPayloadReceivedCallbackFunction){
-        this.onPayloadReceivedCallbackFunction = onPayloadReceivedCallbackFunction;
+    protected void sendDeviceInitialInfo(DeviceInitialInfo deviceInitialInfo, String endpointId) throws Exception {
+        Payload payload = createPayloadFromDeviceInitialInfo(deviceInitialInfo);
+        connectionsClient.sendPayload(endpointId, payload);
     }
 
-    abstract public void start();
+    abstract public void start() throws Exception;
     abstract public void disconnect();
     abstract public void destroy();
 }

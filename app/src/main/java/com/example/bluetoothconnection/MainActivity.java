@@ -105,7 +105,8 @@ public class MainActivity extends AppCompatActivity {
         AppConfig.setShouldEncryptData(true);
         AppConfig.setShouldCreateHash(true);
     }
-
+    ////!!!!!!!!!!!!!!!!Aida: nu putem muta asta in Discovery din moment ce luam context din MainActivity
+    //si il pasam ca param pentru Device??????????????????
     private void initializeUploadButton(){
         ActivityResultLauncher<Intent> resultLauncher = registerForActivityResult(
                 new ActivityResultContracts.StartActivityForResult(),

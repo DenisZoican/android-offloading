@@ -41,7 +41,6 @@ public class ImageProcessing {
         int heightOffset = beginRowIndex*subMatHeight;
         for(int i=heightOffset;i<heightOffset+subMatHeight && i<destMatHeight;i++){
             for(int j=0;j<subMatWidth;j++){
-                System.out.println("Zoicanel "+i+"--"+j);
                 double grayScaleValue = subMat.get(i - heightOffset, j)[0];
                 double[] newPixel = new double[]{grayScaleValue, grayScaleValue, grayScaleValue, 255.0};
 

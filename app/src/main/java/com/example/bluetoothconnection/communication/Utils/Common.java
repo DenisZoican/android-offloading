@@ -182,7 +182,7 @@ public class Common {
     private static byte[] convertMessageContentTypeToByteArray(int value) {
         return ByteBuffer.allocate(MESSAGE_CONTENT_TYPE_LENGTH).putInt(value).array();
     }
-    private static byte[] convertMatToByteArray(Mat image) {
+    public static byte[] convertMatToByteArray(Mat image) {
         MatOfByte matOfByte = new MatOfByte();
         Imgcodecs.imencode(".jpg", image, matOfByte); /////////// We can specify the extension. Now is empty
         return matOfByte.toArray();
@@ -190,7 +190,7 @@ public class Common {
     private static int convertByteArrayToMessageContentType(byte[] bytes) {
         return ByteBuffer.wrap(bytes, 0, MESSAGE_CONTENT_TYPE_LENGTH).getInt();
     }
-    private static Mat convertByteArrayToMat(byte[] bytes){
+    public static Mat convertByteArrayToMat(byte[] bytes){
         MatOfByte matOfByte = new MatOfByte(bytes);
         return Imgcodecs.imdecode(matOfByte, Imgcodecs.IMREAD_UNCHANGED);
     }

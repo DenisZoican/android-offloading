@@ -29,6 +29,8 @@ android {
 }
 
 dependencies {
+    implementation 'com.squareup.okhttp3:okhttp:4.9.2'
+    implementation 'com.squareup.okhttp3:logging-interceptor:4.9.3'
     implementation 'com.quickbirdstudios:opencv-contrib:3.4.15'
     implementation 'com.google.android.gms:play-services-nearby:19.1.0'
     implementation 'androidx.appcompat:appcompat:1.6.1'

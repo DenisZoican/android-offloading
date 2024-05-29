@@ -19,6 +19,8 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import com.example.bluetoothconnection.R;
+import com.example.bluetoothconnection.communication.Extern.ExternCommunicationUtils;
+import com.example.bluetoothconnection.communication.Extern.ExternUploadCallback;
 import com.example.bluetoothconnection.communication.Entities.CommunicationDetails;
 import com.example.bluetoothconnection.communication.Entities.DeviceInitialInfo;
 import com.example.bluetoothconnection.communication.PayloadDataEntities.PayloadData;
@@ -52,8 +54,6 @@ import java.security.PublicKey;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
-import java.util.Random;
 
 public class Discovery extends Device{
     private Map<String,DeviceInitialInfo> discoveredDevices = new HashMap<>();
@@ -114,11 +114,29 @@ public class Discovery extends Device{
         }
 
         /// Simulate multiple devices when we have only one
-        int numberOfParts = 3;
+        int numberOfParts = 2;
         initializeImageValues(numberOfParts);
 
-        String endpointId = discoveredDevices.keySet().iterator().next();
-        sendImagePartToSingleEndpoint(endpointId, 0);
+        Mat firstPartOfTheImage = partsNeededFromImage.get(1);
+        ///// Send to cloud
+        ExternCommunicationUtils.uploadMat(matImageFromGallery, false, new ExternUploadCallback() {
+            @Override
+            public void onSuccess(Mat processedMat) {
+                // Handle the processed Mat (e.g., display it in an ImageView)
+                replacePartInImageFromGallery(processedMat, 0);
+            }
+
+            @Override
+            public void onFailure(String errorMessage) {
+                // Handle the error
+                System.out.println(errorMessage);
+            }
+        });
+
+        ///// Send to just one device
+//        String endpointId = discoveredDevices.keySet().iterator().next();
+//        sendImagePartToSingleEndpoint(endpointId, 0);
+
         /*
         //// Real dividing and sending images. Do not delete. Will be used in future
         List<Mat> divideImages = ImageProcessing.divideImages(imageFromGallery,allDevicesIds.size());

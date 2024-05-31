@@ -1,7 +1,6 @@
 package com.example.bluetoothconnection.communication;
 
 import static com.example.bluetoothconnection.communication.Utils.Common.SERVICE_ID;
-import static com.example.bluetoothconnection.communication.Utils.Common.STRATEGY;
 import static com.example.bluetoothconnection.communication.Utils.Common.createPayloadFromMat;
 import static com.example.bluetoothconnection.communication.Utils.Common.extractDataFromPayload;
 import static com.example.bluetoothconnection.communication.Utils.Encrypting.checkAuthenticationToken;
@@ -38,6 +37,7 @@ import com.google.android.gms.nearby.connection.EndpointDiscoveryCallback;
 import com.google.android.gms.nearby.connection.Payload;
 import com.google.android.gms.nearby.connection.PayloadCallback;
 import com.google.android.gms.nearby.connection.PayloadTransferUpdate;
+import com.google.android.gms.nearby.connection.Strategy;
 
 import org.opencv.core.CvType;
 import org.opencv.core.Mat;
@@ -62,168 +62,44 @@ public class Discovery extends Device{
     private Map<String, CommunicationDetails> devicesUsedInCurrentCommunicationDetails;
     private Map<Integer, Mat> partsNeededFromImage;
     private Mat matImageFromGallery;
-    private String urlPathImageFromGallery;
-    private final int MAX_RETRIES = 10;
 
-    public Discovery(Context context, Activity activity, ConnectionsClient connectionsClient) throws Exception {
-        super(context, activity, connectionsClient);
-    }
-
-    public void start() {
-        activity.setContentView(R.layout.activity_discover_main);
-        initializeUiElements();
-
-        DiscoveryOptions discoveryOptions = new DiscoveryOptions.Builder().setStrategy(STRATEGY).build();
-        connectionsClient.startDiscovery(
-                        SERVICE_ID, endpointDiscoveryCallback, discoveryOptions)
-                .addOnSuccessListener(
-                        (Void unused) -> {
-                            // We're discovering nearby endpoints!
-                            Toast.makeText(activity, "We are discovering.", Toast.LENGTH_SHORT).show();
-                        })
-                .addOnFailureListener(
-                        (Exception e) -> {
-                            // We were unable to start discovering.
-                            Toast.makeText(activity, "Failed to discover - "+e.toString(), Toast.LENGTH_SHORT).show();
-                        });
-    }
-
-    public void setUrlPathImageFromGallery(String urlPathImageFromGallery){
-        this.urlPathImageFromGallery = urlPathImageFromGallery;
-    }
-
-    public void setMatImageFromGallery(Mat matImageFromGallery){
-        Mat resizedMat = new Mat(500, 500, CvType.CV_8UC4);
-        Imgproc.resize(matImageFromGallery, resizedMat, new Size(500, 500), 0, 0, Imgproc.INTER_LINEAR);
-        /////////////// MUST RESIZE. FIND MAX SIZE FOR PAYLOAD
-
-        this.matImageFromGallery = resizedMat;
-    }
-
-    private void sendMessage(Mat image) throws Exception {
-        boolean useCloud = false;
-
-        if(useCloud){
-            new Thread(new Runnable() {
-                @Override
-                public void run() {
-                    uploadImageToAPI();
-                }
-            }).start();
-            return;
-        }
-
-        /// Simulate multiple devices when we have only one
-        int numberOfParts = 2;
-        initializeImageValues(numberOfParts);
-
-        Mat firstPartOfTheImage = partsNeededFromImage.get(1);
-        ///// Send to cloud
-        ExternCommunicationUtils.uploadMat(matImageFromGallery, false, new ExternUploadCallback() {
+    protected EndpointDiscoveryCallback getEndpointDiscoveryCallback(){
+        return new EndpointDiscoveryCallback() {
             @Override
-            public void onSuccess(Mat processedMat) {
-                // Handle the processed Mat (e.g., display it in an ImageView)
-                replacePartInImageFromGallery(processedMat, 0);
+            public void onEndpointFound(String endpointId, DiscoveredEndpointInfo info) {
+                // We found an endpoint!
+                System.out.println(info.getServiceId()); ////////// Check if we need to check this or if it is checked automatically
+
+                String authenticationTokenAsName = null;
+                try {
+                    authenticationTokenAsName = getEncryptedAuthenticationToken();
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+
+                connectionsClient.requestConnection(authenticationTokenAsName, endpointId, connectionLifecycleCallback)
+                        .addOnSuccessListener(
+                                (Void unused) -> {
+                                    // We're connecting!
+                                    System.out.println("We are connecting");
+                                })
+                        .addOnFailureListener(
+                                (Exception e) -> {
+                                    // We were unable to connect.
+                                    System.out.println("We are unable connecting "+e.toString());
+                                });
             }
 
             @Override
-            public void onFailure(String errorMessage) {
-                // Handle the error
-                System.out.println(errorMessage);
+            public void onEndpointLost(String endpointId) {
+                // We lost an endpoint.
+                //////// !!!!!!!!!! verify if it throws exception when list doesn't contain endpointId !!!!!!!!!!!
+                //////////////////put it back, removed for when entering case PayloadTransferUpdate.Status.FAILURE//////////////////////////////////////
+                //discoveredDevices.remove(endpointId);
+                //updateAllDevicesTextView();
             }
-        });
-
-        ///// Send to just one device
-//        String endpointId = discoveredDevices.keySet().iterator().next();
-//        sendImagePartToSingleEndpoint(endpointId, 0);
-
-        /*
-        //// Real dividing and sending images. Do not delete. Will be used in future
-        List<Mat> divideImages = ImageProcessing.divideImages(imageFromGallery,allDevicesIds.size());
-        List<String> allDevicesArray = new ArrayList<>(allDevicesIds);
-        int allDevicesArrayLength = allDevicesArray.size();
-
-        for(int i=0;i<allDevicesArrayLength;i++){
-            String deviceId = allDevicesArray.get(i);
-            Payload payload = convertMatToPayload(divideImages.get(i));
-
-            devicesUsedInCurrentCommunication.put(deviceId, i);
-            connectionsClient.sendPayload(deviceId, payload);
-        }*/
+        };
     }
-
-    ///////////// Send message only if we have public key. Add a check
-    private void sendImagePartToSingleEndpoint(String endpointId, int imagePart) throws Exception {
-        ///////////// Send message only if we have public key. Add a check
-        if(devicesUsedInCurrentCommunicationDetails.containsKey(endpointId)) {
-            CommunicationDetails communicationDetails = devicesUsedInCurrentCommunicationDetails.get(endpointId);
-            communicationDetails.incrementFailedAttempts();
-        } else {
-            CommunicationDetails communicationDetails = new CommunicationDetails(imagePart);
-            devicesUsedInCurrentCommunicationDetails.put(endpointId,communicationDetails);
-        }
-
-        PublicKey endpointPublicKey = discoveredDevices.get(endpointId).getPublicKey();
-
-        Payload payload = createPayloadFromMat(partsNeededFromImage.get(imagePart), endpointPublicKey, AESSecretKeyUsedForMessages);
-        connectionsClient.sendPayload(endpointId, payload);
-    }
-
-    private void initializeImageValues(int numberOfParts){
-        List<Mat> divideImages = ImageProcessing.divideImages(matImageFromGallery,numberOfParts);
-        this.partsNeededFromImage =  new HashMap<>();
-        for(int i=0;i<numberOfParts;i++){
-            this.partsNeededFromImage.put(i,divideImages.get(i));
-        }
-
-        this.devicesUsedInCurrentCommunicationDetails = new HashMap<>();
-    }
-
-    public void disconnect() {
-        discoveredDevices.keySet().forEach((deviceId)->{
-            connectionsClient.disconnectFromEndpoint(deviceId);
-        });
-    }
-
-    public void destroy() {
-        connectionsClient.stopDiscovery();
-    }
-    private final EndpointDiscoveryCallback endpointDiscoveryCallback =
-            new EndpointDiscoveryCallback() {
-                @Override
-                public void onEndpointFound(String endpointId, DiscoveredEndpointInfo info) {
-                    // We found an endpoint!
-                    System.out.println(info.getServiceId()); ////////// Check if we need to check this or if it is checked automatically
-
-                    String authenticationTokenAsName = null;
-                    try {
-                        authenticationTokenAsName = getEncryptedAuthenticationToken();
-                    } catch (Exception e) {
-                        throw new RuntimeException(e);
-                    }
-
-                    connectionsClient.requestConnection(authenticationTokenAsName, endpointId, connectionLifecycleCallback)
-                            .addOnSuccessListener(
-                                    (Void unused) -> {
-                                        // We're connecting!
-                                        System.out.println("We are connecting");
-                                    })
-                            .addOnFailureListener(
-                                    (Exception e) -> {
-                                        // We were unable to connect.
-                                        System.out.println("We are unable connecting "+e.toString());
-                                    });
-                }
-
-                @Override
-                public void onEndpointLost(String endpointId) {
-                    // We lost an endpoint.
-                    //////// !!!!!!!!!! verify if it throws exception when list doesn't contain endpointId !!!!!!!!!!!
-                    //////////////////put it back, removed for when entering case PayloadTransferUpdate.Status.FAILURE//////////////////////////////////////
-                    //discoveredDevices.remove(endpointId);
-                    //updateAllDevicesTextView();
-                }
-            };
 
     private final ConnectionLifecycleCallback connectionLifecycleCallback =
             new ConnectionLifecycleCallback() {
@@ -333,6 +209,102 @@ public class Discovery extends Device{
             }
         }
     };
+    private final int MAX_RETRIES = 10;
+
+    public Discovery(Context context, Activity activity, ConnectionsClient connectionsClient) throws Exception {
+        super(context, activity, connectionsClient);
+    }
+
+    public void start() {
+        activity.setContentView(R.layout.activity_discover_main);
+        initializeUiElements();
+
+        startDiscovery();
+    }
+
+    public void setMatImageFromGallery(Mat matImageFromGallery){
+        Mat resizedMat = new Mat(500, 500, CvType.CV_8UC4);
+        Imgproc.resize(matImageFromGallery, resizedMat, new Size(500, 500), 0, 0, Imgproc.INTER_LINEAR);
+        /////////////// MUST RESIZE. FIND MAX SIZE FOR PAYLOAD
+
+        this.matImageFromGallery = resizedMat;
+    }
+
+    private void sendMessage(Mat image) throws Exception {
+        /// Simulate multiple devices when we have only one
+        int numberOfParts = 3;
+        initializeImageValues(numberOfParts);
+
+        ExternCommunicationUtils.uploadMat(matImageFromGallery, false, new ExternUploadCallback() {
+            @Override
+            public void onSuccess(Mat processedMat) {
+                // Handle the processed Mat (e.g., display it in an ImageView)
+                replacePartInImageFromGallery(processedMat, 0);
+            }
+
+            @Override
+            public void onFailure(String errorMessage) {
+                // Handle the error
+                System.out.println(errorMessage);
+            }
+        });
+
+        /* Send image to another device
+        String endpointId = discoveredDevices.keySet().iterator().next();
+        sendImagePartToSingleEndpoint(endpointId, 0);
+         */
+
+        /*
+        //// Real dividing and sending images. Do not delete. Will be used in future
+        List<Mat> divideImages = ImageProcessing.divideImages(imageFromGallery,allDevicesIds.size());
+        List<String> allDevicesArray = new ArrayList<>(allDevicesIds);
+        int allDevicesArrayLength = allDevicesArray.size();
+
+        for(int i=0;i<allDevicesArrayLength;i++){
+            String deviceId = allDevicesArray.get(i);
+            Payload payload = convertMatToPayload(divideImages.get(i));
+
+            devicesUsedInCurrentCommunication.put(deviceId, i);
+            connectionsClient.sendPayload(deviceId, payload);
+        }*/
+    }
+
+    ///////////// Send message only if we have public key. Add a check
+    private void sendImagePartToSingleEndpoint(String endpointId, int imagePart) throws Exception {
+        ///////////// Send message only if we have public key. Add a check
+        if(devicesUsedInCurrentCommunicationDetails.containsKey(endpointId)) {
+            CommunicationDetails communicationDetails = devicesUsedInCurrentCommunicationDetails.get(endpointId);
+            communicationDetails.incrementFailedAttempts();
+        } else {
+            CommunicationDetails communicationDetails = new CommunicationDetails(imagePart);
+            devicesUsedInCurrentCommunicationDetails.put(endpointId,communicationDetails);
+        }
+
+        PublicKey endpointPublicKey = discoveredDevices.get(endpointId).getPublicKey();
+
+        Payload payload = createPayloadFromMat(partsNeededFromImage.get(imagePart), endpointPublicKey, AESSecretKeyUsedForMessages);
+        connectionsClient.sendPayload(endpointId, payload);
+    }
+
+    private void initializeImageValues(int numberOfParts){
+        List<Mat> divideImages = ImageProcessing.divideImages(matImageFromGallery,numberOfParts);
+        this.partsNeededFromImage =  new HashMap<>();
+        for(int i=0;i<numberOfParts;i++){
+            this.partsNeededFromImage.put(i,divideImages.get(i));
+        }
+
+        this.devicesUsedInCurrentCommunicationDetails = new HashMap<>();
+    }
+
+    public void disconnect() {
+        discoveredDevices.keySet().forEach((deviceId)->{
+            connectionsClient.disconnectFromEndpoint(deviceId);
+        });
+    }
+
+    public void destroy() {
+        connectionsClient.stopDiscovery();
+    }
 
     private void deviceInitialInfoReceivedBehavior(PayloadDeviceInitialInfoData payloadDeviceInitialInfoData, String endpointId) {
         DeviceInitialInfo deviceInitialInfo = payloadDeviceInitialInfoData.getDeviceInitialInfo();
@@ -359,42 +331,6 @@ public class Discovery extends Device{
         ImageView imageView = activity.findViewById(R.id.imageView);
         Bitmap receivedImageBitmap = convertImageToBitmap(matImageFromGallery);
         imageView.setImageBitmap(receivedImageBitmap);
-    }
-    private void uploadImageToAPI() {
-        try {
-            File imageFile = new File(urlPathImageFromGallery);
-
-            // Open a connection to the API endpoint
-            URL url = new URL("http://localhost:5118/api/images/grayscale");
-            HttpURLConnection connection = (HttpURLConnection) url.openConnection();
-            connection.setRequestMethod("POST");
-            connection.setDoOutput(true);
-
-            // Set request headers if needed
-            connection.setRequestProperty("Content-Type", "image/jpeg");
-
-            // Write the image data to the request body
-            OutputStream outputStream = connection.getOutputStream();
-            FileInputStream fileInputStream = new FileInputStream(imageFile);
-            byte[] buffer = new byte[4096];
-            int bytesRead;
-            while ((bytesRead = fileInputStream.read(buffer)) != -1) {
-                outputStream.write(buffer, 0, bytesRead);
-            }
-            outputStream.close();
-            fileInputStream.close();
-
-            // Get the response from the server
-            int responseCode = connection.getResponseCode();
-            if (responseCode == HttpURLConnection.HTTP_OK) {
-                Toast.makeText(activity,"We received image from cloud",Toast.LENGTH_SHORT).show();
-            } else {
-                // Image processing failed
-                // Handle the error
-            }
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
     }
 
     /////////////// UI Elements

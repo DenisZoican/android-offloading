@@ -115,8 +115,6 @@ public class MainActivity extends AppCompatActivity {
                     public void onActivityResult(ActivityResult result) {
                         Uri imageUri = result.getData().getData();
 
-                        ((Discovery)device).setUrlPathImageFromGallery(getRealPathFromURI(imageUri));
-
                         ImageView imageView = findViewById(R.id.imageView);
                         imageView.setImageURI(imageUri);
 

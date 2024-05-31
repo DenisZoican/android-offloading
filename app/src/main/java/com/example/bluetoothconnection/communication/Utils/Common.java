@@ -36,7 +36,6 @@ public class Common {
     public enum MessageContentType {
         InitialDeviceInfo, Image, Error, UndefinedType
     }
-    public static final Strategy STRATEGY = Strategy.P2P_STAR; //// Use P2P_CLUSTER because in START the central one is the advertiser.
     public static final String SERVICE_ID = "com.example.nearbytest";
     public static final int ENCRYPTED_SECRET_KEY_LENGTH = 256;
     public static final int MESSAGE_CONTENT_TYPE_LENGTH = 4;

@@ -1,6 +1,6 @@
 package com.example.bluetoothconnection.communication;
 
-import static com.example.bluetoothconnection.communication.Utils.Common.SERVICE_ID;
+import static com.example.bluetoothconnection.communication.Utils.Common.createPayloadFromDeviceNode;
 import static com.example.bluetoothconnection.communication.Utils.Common.createPayloadFromMat;
 import static com.example.bluetoothconnection.communication.Utils.Common.extractDataFromPayload;
 import static com.example.bluetoothconnection.communication.Utils.Encrypting.checkAuthenticationToken;
@@ -9,11 +9,7 @@ import static com.example.bluetoothconnection.opencv.ImageProcessing.convertImag
 import static com.example.bluetoothconnection.opencv.ImageProcessing.processImage;
 
 import android.app.Activity;
-import android.content.BroadcastReceiver;
 import android.content.Context;
-import android.content.Intent;
-import android.content.IntentFilter;
-import android.os.BatteryManager;
 import android.view.View;
 import android.widget.Button;
 import android.widget.ImageView;
@@ -22,11 +18,11 @@ import android.widget.Toast;
 
 import com.example.bluetoothconnection.R;
 import com.example.bluetoothconnection.communication.Entities.DeviceInitialInfo;
+import com.example.bluetoothconnection.communication.Entities.DeviceNode;
 import com.example.bluetoothconnection.communication.PayloadDataEntities.PayloadData;
 import com.example.bluetoothconnection.communication.PayloadDataEntities.PayloadDeviceInitialInfoData;
 import com.example.bluetoothconnection.communication.PayloadDataEntities.PayloadMatData;
 import com.example.bluetoothconnection.communication.Utils.Common;
-import com.google.android.gms.nearby.connection.AdvertisingOptions;
 import com.google.android.gms.nearby.connection.ConnectionInfo;
 import com.google.android.gms.nearby.connection.ConnectionLifecycleCallback;
 import com.google.android.gms.nearby.connection.ConnectionResolution;
@@ -41,6 +37,12 @@ import com.google.android.gms.nearby.connection.Strategy;
 
 import org.opencv.core.Mat;
 
+import java.io.BufferedReader;
+import java.io.FileInputStream;
+import java.io.FileReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.RandomAccessFile;
 import java.security.PublicKey;
 
 public class Advertise extends Device {
@@ -107,8 +109,8 @@ public class Advertise extends Device {
                     System.out.println("Connection accepted");
                     discoveryDeviceId = endpointId;
                     updateAllDevicesTextView();
-
-                    sendDeviceInitialInfo(endpointId); ////// SHOULD PUT BATTERY INFO HERE - with love for Aidel
+                        //sendDeviceInitialInfo(endpointId); ////// SHOULD PUT BATTERY INFO HERE - with love for Aidel
+                        sendDeviceNode(endpointId);
                 } else {
                     // We were unable to connect.
                 }
@@ -164,9 +166,6 @@ public class Advertise extends Device {
 
     public Advertise(Context context, Activity activity, ConnectionsClient connectionsClient) throws Exception {
         super(context, activity, connectionsClient);
-
-        IntentFilter filter = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
-        context.registerReceiver(batteryReceiver, filter);
     }
 
     public void start() throws Exception {
@@ -221,33 +220,26 @@ public class Advertise extends Device {
         sendMessage(processedMat);
     }
 
-    private void sendDeviceInitialInfo(String endpointId){
-        DeviceInitialInfo deviceInitialInfo = new DeviceInitialInfo(keyPairUsedForAESSecretKEy.getPublic(),batteryLevel);
+    /*private void sendDeviceInitialInfo(String endpointId){
+        DeviceInitialInfo deviceInitialInfo = new DeviceInitialInfo(keyPairUsedForAESSecretKEy.getPublic(),batteryLevel,cpuUsage,cpuCores);
         try {
+            updateCPUInfo();
             sendDeviceInitialInfo(deviceInitialInfo, endpointId);
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
-    }
-
-    private final BroadcastReceiver batteryReceiver = new BroadcastReceiver() {
-        @Override
-        public void onReceive(Context context, Intent intent) {
-            if (Intent.ACTION_BATTERY_CHANGED.equals(intent.getAction())) {
-               //if(batteryLevel < 0.0) {
-                    // Retrieve battery level
-                    int level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);
-
-                    // Retrieve battery scale (maximum level)
-                    int scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, -1);
-
-                    // Calculate battery percentage
-                    batteryLevel = (level / (float) scale) * 100;
-                //}
-            }
+    }*/
+    private void sendDeviceNode(String endpointId) {
+        DeviceNode node = getNode();
+        DeviceInitialInfo deviceInitialInfo = new DeviceInitialInfo(keyPairUsedForAESSecretKEy.getPublic(),getBatteryLevel(),getCpuUsage(),getCpuCores());
+        node.setDeviceInitialInfo(deviceInitialInfo);
+        try {
+            Payload payload = createPayloadFromDeviceNode(node);
+            connectionsClient.sendPayload(endpointId, payload);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
         }
-    };
-
+    }
     ////// UI stuff
     private void updateAllDevicesTextView(){
         TextView allDevicesTextView = activity.findViewById(R.id.allDevices);

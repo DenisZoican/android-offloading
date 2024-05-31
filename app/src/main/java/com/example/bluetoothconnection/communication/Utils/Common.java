@@ -9,6 +9,7 @@ import static com.example.bluetoothconnection.communication.Utils.Encrypting.enc
 
 import com.example.bluetoothconnection.AppConfig;
 import com.example.bluetoothconnection.communication.Entities.DeviceInitialInfo;
+import com.example.bluetoothconnection.communication.Entities.DeviceNode;
 import com.example.bluetoothconnection.communication.PayloadDataEntities.PayloadData;
 import com.example.bluetoothconnection.communication.PayloadDataEntities.PayloadDeviceInitialInfoData;
 import com.example.bluetoothconnection.communication.PayloadDataEntities.PayloadMatData;
@@ -56,11 +57,17 @@ public class Common {
 
         return createPayLoadWithBytes(combinedBytes, publicKey, secretKey);
     }
-
+    /////////de sters
     public static Payload createPayloadFromDeviceInitialInfo(DeviceInitialInfo deviceInitialInfo) throws Exception {
         byte[] deviceInitialInfoBytes = serializeObject(deviceInitialInfo);
 
         return createPayloadWithEncryptedBytesUsingCommonKey(deviceInitialInfoBytes);
+    }
+
+    public static Payload createPayloadFromDeviceNode(DeviceNode deviceNode) throws Exception {
+        byte[] deviceNodeBytes = serializeObject(deviceNode);
+
+        return createPayloadWithEncryptedBytesUsingCommonKey(deviceNodeBytes);
     }
 
     public static byte[] extractPayloadBytesWithoutHash (byte[] payloadWithHash) throws Exception {
@@ -131,6 +138,7 @@ public class Common {
     }
 
     private static Payload createPayloadWithEncryptedBytesUsingCommonKey(byte[] bytes) throws Exception {
+        ////////////add if for encrypting/not encrypting using AppConfig
         byte[] encryptedBytes = encryptWithCommonKey(bytes);
         // Create a payload from the combined byte array
         return Payload.fromBytes(encryptedBytes);

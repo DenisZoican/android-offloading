@@ -2,38 +2,33 @@ package com.example.bluetoothconnection.communication;
 
 import static com.example.bluetoothconnection.communication.Utils.Common.SERVICE_ID;
 import static com.example.bluetoothconnection.communication.Utils.Common.createPayloadFromDeviceInitialInfo;
-import static com.example.bluetoothconnection.communication.Utils.Common.extractDataFromPayload;
-import static com.example.bluetoothconnection.communication.Utils.Encrypting.checkAuthenticationToken;
 import static com.example.bluetoothconnection.communication.Utils.Encrypting.generateAESKey;
 import static com.example.bluetoothconnection.communication.Utils.Encrypting.generateRSAKeyPair;
 import static com.example.bluetoothconnection.communication.Utils.Encrypting.getEncryptedAuthenticationToken;
 
 import android.app.Activity;
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.widget.Toast;
 
 import com.example.bluetoothconnection.communication.Entities.DeviceInitialInfo;
-import com.example.bluetoothconnection.communication.PayloadDataEntities.PayloadData;
-import com.example.bluetoothconnection.communication.PayloadDataEntities.PayloadDeviceInitialInfoData;
-import com.example.bluetoothconnection.communication.PayloadDataEntities.PayloadMatData;
-import com.example.bluetoothconnection.communication.Utils.Common;
 import com.google.android.gms.nearby.connection.AdvertisingOptions;
-import com.google.android.gms.nearby.connection.ConnectionInfo;
 import com.google.android.gms.nearby.connection.ConnectionLifecycleCallback;
-import com.google.android.gms.nearby.connection.ConnectionResolution;
+import android.content.Intent;
+import android.content.IntentFilter;
+import android.os.BatteryManager;
+import android.os.Debug;
+import android.util.Log;
+
+import com.example.bluetoothconnection.communication.Entities.DeviceNode;
 import com.google.android.gms.nearby.connection.ConnectionsClient;
-import com.google.android.gms.nearby.connection.DiscoveredEndpointInfo;
 import com.google.android.gms.nearby.connection.DiscoveryOptions;
 import com.google.android.gms.nearby.connection.EndpointDiscoveryCallback;
 import com.google.android.gms.nearby.connection.Payload;
-import com.google.android.gms.nearby.connection.PayloadCallback;
-import com.google.android.gms.nearby.connection.PayloadTransferUpdate;
 import com.google.android.gms.nearby.connection.Strategy;
 
-import org.opencv.core.Mat;
 
 import java.security.KeyPair;
-import java.util.function.Consumer;
 
 import javax.crypto.SecretKey;
 
@@ -45,18 +40,48 @@ public abstract class Device {
     protected final ConnectionsClient connectionsClient;
     public Context context;
 
+
+    private float batteryLevel;
+    private double cpuUsage;
+    private int cpuCores;
+    private DeviceNode node;
+
     public Device(Context context, Activity activity, ConnectionsClient connectionsClient) throws Exception {
         this.activity = activity;
         this.connectionsClient = connectionsClient;
         this.context = context;
+        this.node = new DeviceNode();
 
         keyPairUsedForAESSecretKEy = generateRSAKeyPair();
         AESSecretKeyUsedForMessages = generateAESKey();
+
+        IntentFilter filter = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
+        context.registerReceiver(batteryReceiver, filter);
+    }
+
+    public KeyPair getKeyPairUsedForAESSecretKEy() {
+        return keyPairUsedForAESSecretKEy;
+    }
+
+    public float getBatteryLevel() {
+        return batteryLevel;
+    }
+
+    public double getCpuUsage() {
+        return cpuUsage;
+    }
+
+    public int getCpuCores() {
+        return cpuCores;
     }
 
     protected void sendDeviceInitialInfo(DeviceInitialInfo deviceInitialInfo, String endpointId) throws Exception {
         Payload payload = createPayloadFromDeviceInitialInfo(deviceInitialInfo);
         connectionsClient.sendPayload(endpointId, payload);
+    }
+
+    public DeviceNode getNode() {
+        return node;
     }
 
     abstract public void start() throws Exception;
@@ -99,7 +124,64 @@ public abstract class Device {
         return null;
     }
 
-    protected ConnectionLifecycleCallback getConnectionLifecycleCallback(){
+    protected ConnectionLifecycleCallback getConnectionLifecycleCallback() {
         return null;
+    }
+
+    private final BroadcastReceiver batteryReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            if (Intent.ACTION_BATTERY_CHANGED.equals(intent.getAction())) {
+                //if(batteryLevel < 0.0) {
+                // Retrieve battery level
+                int level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);
+
+                // Retrieve battery scale (maximum level)
+                int scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, -1);
+
+                // Calculate battery percentage
+                batteryLevel = (level / (float) scale) * 100;
+                updateCPUInfo();
+            }
+        }
+    };
+
+    private void updateCPUInfo() {
+        // Get CPU usage info
+        cpuUsage = calculateCpuUsage();
+        //cpuUsageTextView.setText("CPU Usage: " + cpuUsage + "%");
+        Log.d("CPU Usage: ",cpuUsage + "%");
+
+        System.out.println("Aida CPU USAGE=" + cpuUsage);
+
+        // Get CPU capacity
+        cpuCores = Runtime.getRuntime().availableProcessors();
+        //cpuCapacityTextView.setText("CPU Capacity: " + cpuCores + " cores");
+        Log.d("CPU Capacity: ",cpuCores + " cores");
+        System.out.println("Aida CPU Capacity=" + cpuCores);
+    }
+    public static double calculateCpuUsage() {
+        double cpuUsage = -1.0;
+        try {
+            // Get total CPU time in nanoseconds
+            long totalCpuTimeNs = Debug.threadCpuTimeNanos();
+
+            // Delay for a short period
+            Thread.sleep(1000);
+
+            // Get total CPU time again after a short delay
+            long totalCpuTimeNs2 = Debug.threadCpuTimeNanos();
+
+            // Calculate elapsed time in milliseconds
+            long elapsedTimeMs = 1000;
+
+            // Calculate CPU usage percentage
+            double cpuTimeDiffMs = (totalCpuTimeNs2 - totalCpuTimeNs) / 1000000.0; // Convert nanoseconds to milliseconds
+            cpuUsage = (cpuTimeDiffMs / elapsedTimeMs) * 100.0;
+
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+        return cpuUsage;
     }
 }

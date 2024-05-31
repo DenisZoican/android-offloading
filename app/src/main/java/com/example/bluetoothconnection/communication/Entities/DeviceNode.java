@@ -1,9 +1,10 @@
 package com.example.bluetoothconnection.communication.Entities;
 
+import java.io.Serializable;
 import java.util.HashMap;
 import java.util.Map;
 
-public class DeviceNode {
+public class DeviceNode implements Serializable {
     private DeviceInitialInfo deviceInitialInfo;
     private Map<String,DeviceNode> neighbours;
 

@@ -1,6 +1,6 @@
 package com.example.bluetoothconnection.communication;
 
-import static com.example.bluetoothconnection.communication.Utils.Common.SERVICE_ID;
+import static com.example.bluetoothconnection.communication.Utils.Common.createPayloadFromDeviceNode;
 import static com.example.bluetoothconnection.communication.Utils.Common.createPayloadFromMat;
 import static com.example.bluetoothconnection.communication.Utils.Common.extractDataFromPayload;
 import static com.example.bluetoothconnection.communication.Utils.Encrypting.checkAuthenticationToken;
@@ -24,7 +24,7 @@ import com.example.bluetoothconnection.communication.Entities.CommunicationDetai
 import com.example.bluetoothconnection.communication.Entities.DeviceInitialInfo;
 import com.example.bluetoothconnection.communication.Entities.DeviceNode;
 import com.example.bluetoothconnection.communication.PayloadDataEntities.PayloadData;
-import com.example.bluetoothconnection.communication.PayloadDataEntities.PayloadDeviceInitialInfoData;
+import com.example.bluetoothconnection.communication.PayloadDataEntities.PayloadDeviceNodeData;
 import com.example.bluetoothconnection.communication.PayloadDataEntities.PayloadMatData;
 import com.example.bluetoothconnection.communication.Utils.Common;
 import com.example.bluetoothconnection.opencv.ImageProcessing;
@@ -33,7 +33,6 @@ import com.google.android.gms.nearby.connection.ConnectionLifecycleCallback;
 import com.google.android.gms.nearby.connection.ConnectionResolution;
 import com.google.android.gms.nearby.connection.ConnectionsClient;
 import com.google.android.gms.nearby.connection.DiscoveredEndpointInfo;
-import com.google.android.gms.nearby.connection.DiscoveryOptions;
 import com.google.android.gms.nearby.connection.EndpointDiscoveryCallback;
 import com.google.android.gms.nearby.connection.Payload;
 import com.google.android.gms.nearby.connection.PayloadCallback;
@@ -128,7 +127,7 @@ public class Discovery extends Device{
                         // We're connected!
                         System.out.println("GRRRRRR CONNECTED");
 
-                        sendDeviceInitialInfo(endpointId);
+                        sendDeviceNode(endpointId);
                     } else {
                         // We were unable to connect.
                     }
@@ -150,7 +149,7 @@ public class Discovery extends Device{
 
             PayloadData payloadData = null;
             try {
-                payloadData = isDeviceInitialInfoPayload ? Common.extractDeviceInitialInfoFromPayload(payload) : extractDataFromPayload(payload, keyPairUsedForAESSecretKEy.getPrivate());
+                payloadData = isDeviceInitialInfoPayload ? Common.extractDeviceNodeFromPayload(payload) : extractDataFromPayload(payload, keyPairUsedForAESSecretKEy.getPrivate());
             } catch (Exception e) {
                 throw new RuntimeException(e);
             }
@@ -163,22 +162,12 @@ public class Discovery extends Device{
                         throw new RuntimeException(e);
                     }
                     break;
-                case InitialDeviceInfo:
-                    deviceInitialInfoReceivedBehavior((PayloadDeviceInitialInfoData)payloadData, endpointId);
+                case DeviceNode:
+                    deviceNodeReceivedBehavior((PayloadDeviceNodeData)payloadData, endpointId);
                     break;
                 case Error:
                     Toast.makeText(activity, "Hash didn't match", Toast.LENGTH_SHORT).show();
             }
-
-            /////////////////// CODE FOR BATTERY USAGE
-                /*
-                batteryUsage = new String(payload.asBytes());
-                Toast.makeText(activity, "S-a ajuns", Toast.LENGTH_SHORT).show();
-
-                TextView batteryTextView = activity.findViewById(R.id.batteryView);
-                batteryTextView.setText(batteryUsage);
-                 */
-
         }
 
         @Override
@@ -241,7 +230,7 @@ public class Discovery extends Device{
         int numberOfParts = 3;
         initializeImageValues(numberOfParts);
 
-        ExternCommunicationUtils.uploadMat(matImageFromGallery, false, new ExternUploadCallback() {
+       /* ExternCommunicationUtils.uploadMat(matImageFromGallery, false, new ExternUploadCallback() {
             @Override
             public void onSuccess(Mat processedMat) {
                 // Handle the processed Mat (e.g., display it in an ImageView)
@@ -253,13 +242,12 @@ public class Discovery extends Device{
                 // Handle the error
                 System.out.println(errorMessage);
             }
-        });
+        });*/
 
-        /* Send image to another device
+        // Send image to another device
         //String endpointId = discoveredDevices.keySet().iterator().next();
         String endpointId = this.getNode().getNeighbours().keySet().iterator().next();
         sendImagePartToSingleEndpoint(endpointId, 0);
-         */
 
         /*
         //// Real dividing and sending images. Do not delete. Will be used in future
@@ -303,13 +291,8 @@ public class Discovery extends Device{
 
         this.devicesUsedInCurrentCommunicationDetails = new HashMap<>();
     }
-
-    private void deviceInitialInfoReceivedBehavior(PayloadDeviceInitialInfoData payloadDeviceInitialInfoData, String endpointId) {
-        DeviceInitialInfo deviceInitialInfo = payloadDeviceInitialInfoData.getDeviceInitialInfo();
-        //discoveredDevices.put(endpointId, deviceInitialInfo);
-        //trebuie decomentate!!!!!!!!!!
-        //getNode().getNeighbours().put(endpointId, deviceInitialInfo);
-        //this.getNode().put(endpointId, getNode())
+    private void deviceNodeReceivedBehavior(PayloadDeviceNodeData payloadDeviceNodeData, String endpointId) {
+        this.getNode().getNeighbours().put(endpointId, payloadDeviceNodeData.getDeviceNode());
         updateAllDevicesTextView();
     }
 
@@ -371,17 +354,17 @@ public class Discovery extends Device{
 
         allDevicesTextView.setText(allDevicesIdString);
     }
-    //delete
-    /*private void updateBatteryTextView() {
-        TextView batteryTextView = activity.findViewById(R.id.batteryView);
-        batteryTextView.setText(batteryUsage);
-    }*/
-    private void sendDeviceInitialInfo(String endpointId){
-        DeviceInitialInfo deviceInitialInfo = new DeviceInitialInfo(keyPairUsedForAESSecretKEy.getPublic(),-1,-1,-1);
+
+    private void sendDeviceNode(String endpointId) {
+        DeviceNode node = getNode();
+        DeviceInitialInfo deviceInitialInfo = new DeviceInitialInfo(keyPairUsedForAESSecretKEy.getPublic(),getBatteryLevel(),getCpuUsage(),getCpuCores());
+        node.setDeviceInitialInfo(deviceInitialInfo);
         try {
-            sendDeviceInitialInfo(deviceInitialInfo, endpointId);
+            Payload payload = createPayloadFromDeviceNode(node);
+            connectionsClient.sendPayload(endpointId, payload);
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
     }
+
 }

@@ -1,7 +1,6 @@
 package com.example.bluetoothconnection.communication;
 
 import static com.example.bluetoothconnection.communication.Utils.Common.SERVICE_ID;
-import static com.example.bluetoothconnection.communication.Utils.Common.createPayloadFromDeviceInitialInfo;
 import static com.example.bluetoothconnection.communication.Utils.Encrypting.generateAESKey;
 import static com.example.bluetoothconnection.communication.Utils.Encrypting.generateRSAKeyPair;
 import static com.example.bluetoothconnection.communication.Utils.Encrypting.getEncryptedAuthenticationToken;
@@ -59,27 +58,19 @@ public abstract class Device {
         context.registerReceiver(batteryReceiver, filter);
     }
 
-    public KeyPair getKeyPairUsedForAESSecretKEy() {
-        return keyPairUsedForAESSecretKEy;
-    }
-
     public float getBatteryLevel() {
         return batteryLevel;
     }
 
+    public KeyPair getKeyPairUsedForAESSecretKEy() {
+        return keyPairUsedForAESSecretKEy;
+    }
     public double getCpuUsage() {
         return cpuUsage;
     }
-
     public int getCpuCores() {
         return cpuCores;
     }
-
-    protected void sendDeviceInitialInfo(DeviceInitialInfo deviceInitialInfo, String endpointId) throws Exception {
-        Payload payload = createPayloadFromDeviceInitialInfo(deviceInitialInfo);
-        connectionsClient.sendPayload(endpointId, payload);
-    }
-
     public DeviceNode getNode() {
         return node;
     }

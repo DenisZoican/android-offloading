@@ -202,8 +202,26 @@ public class Advertise extends Device {
         sendMessage(processedMat, endpointId);
     }
     private void sendDeviceNode(String endpointId) {
+        /////////////should not send all neighbours, just calculate the weight and send it
+        /////////////it should be enough
         DeviceNode node = getNode();
         DeviceInitialInfo deviceInitialInfo = new DeviceInitialInfo(keyPairUsedForAESSecretKEy.getPublic(),getBatteryLevel(),getCpuUsage(),getCpuCores());
+
+        DeviceNode node_copil1 = new DeviceNode();
+        DeviceNode node_copil1_copil1 = new DeviceNode();
+        DeviceNode node_copil1_copil2 = new DeviceNode();
+        DeviceNode node_copil2= new DeviceNode();
+        DeviceNode node_copil2_copil1 = new DeviceNode();
+
+        node.getNeighbours().put("shakalaka1", node_copil1);
+        node.getNeighbours().put("shakalaka2", node_copil2);
+        node.getNeighbours().put("shakalaka3", new DeviceNode());
+
+        node_copil1.getNeighbours().put("shakalaka1_copil1", node_copil1_copil1);
+        node_copil1_copil1.getNeighbours().put("shakalaka1_copil2", node_copil1_copil2);
+
+        node_copil2.getNeighbours().put("shakalaka2_copil1", node_copil2_copil1);
+
         node.setDeviceInitialInfo(deviceInitialInfo);
         try {
             Payload payload = createPayloadFromDeviceNode(node);

@@ -9,11 +9,11 @@ import static com.example.bluetoothconnection.communication.Utils.Encrypting.enc
 
 import com.example.bluetoothconnection.AppConfig;
 import com.example.bluetoothconnection.communication.Entities.DeviceInitialInfo;
+import com.example.bluetoothconnection.communication.Entities.DeviceNode;
 import com.example.bluetoothconnection.communication.PayloadDataEntities.PayloadData;
-import com.example.bluetoothconnection.communication.PayloadDataEntities.PayloadDeviceInitialInfoData;
+import com.example.bluetoothconnection.communication.PayloadDataEntities.PayloadDeviceNodeData;
 import com.example.bluetoothconnection.communication.PayloadDataEntities.PayloadMatData;
 import com.google.android.gms.nearby.connection.Payload;
-import com.google.android.gms.nearby.connection.Strategy;
 
 import static com.example.bluetoothconnection.communication.Utils.Hashing.calculateHash;
 import static com.example.bluetoothconnection.utils.Common.combineArrays;
@@ -34,7 +34,7 @@ import javax.crypto.spec.SecretKeySpec;
 
 public class Common {
     public enum MessageContentType {
-        InitialDeviceInfo, Image, Error, UndefinedType
+        DeviceNode, Image, Error, UndefinedType
     }
     public static final String SERVICE_ID = "com.example.nearbytest";
     public static final int ENCRYPTED_SECRET_KEY_LENGTH = 256;
@@ -57,10 +57,11 @@ public class Common {
         return createPayLoadWithBytes(combinedBytes, publicKey, secretKey);
     }
 
-    public static Payload createPayloadFromDeviceInitialInfo(DeviceInitialInfo deviceInitialInfo) throws Exception {
-        byte[] deviceInitialInfoBytes = serializeObject(deviceInitialInfo);
+    public static Payload createPayloadFromDeviceNode(DeviceNode deviceNode) throws Exception {
+        // Convert DeviceNode to byte array
+        byte[] deviceNodeBytes = serializeObject(deviceNode);
 
-        return createPayloadWithEncryptedBytesUsingCommonKey(deviceInitialInfoBytes);
+        return createPayloadWithEncryptedBytesUsingCommonKey(deviceNodeBytes);
     }
 
     public static byte[] extractPayloadBytesWithoutHash (byte[] payloadWithHash) throws Exception {
@@ -105,14 +106,19 @@ public class Common {
         }
     }
 
-    public static PayloadData extractDeviceInitialInfoFromPayload(Payload payload) throws Exception {
+    public static PayloadData extractDeviceNodeFromPayload(Payload payload) throws Exception {
         // Extract byte array from the payload
         byte[] payloadBytes = payload.asBytes();
         byte[] decryptedBytes = decryptWithCommonKey(payloadBytes);
 
-        return extractDeviceInitialInfoFromBytes(decryptedBytes);
+        return extractDeviceNodeFromBytes(decryptedBytes);
     }
 
+    private static PayloadDeviceNodeData extractDeviceNodeFromBytes(byte[] byteArray){
+        DeviceNode deviceNode = deserializeObject(byteArray, DeviceNode.class);
+
+        return new PayloadDeviceNodeData(deviceNode);
+    }
     private static  byte[] getContentBytes(byte[] payloadBytes, PrivateKey privateKey) throws Exception {
         return Boolean.parseBoolean(AppConfig.getShouldEncryptData())
                 ? getDecryptedContentBytes(payloadBytes, privateKey)
@@ -131,6 +137,7 @@ public class Common {
     }
 
     private static Payload createPayloadWithEncryptedBytesUsingCommonKey(byte[] bytes) throws Exception {
+        ////////////add if for encrypting/not encrypting using AppConfig
         byte[] encryptedBytes = encryptWithCommonKey(bytes);
         // Create a payload from the combined byte array
         return Payload.fromBytes(encryptedBytes);
@@ -165,12 +172,6 @@ public class Common {
         return Payload.fromBytes(bytes);
     }
 
-    private static PayloadDeviceInitialInfoData extractDeviceInitialInfoFromBytes(byte[] byteArray){
-        DeviceInitialInfo deviceInitialInfo = deserializeObject(byteArray, DeviceInitialInfo.class);
-
-        return new PayloadDeviceInitialInfoData(deviceInitialInfo);
-    }
-
     private static PayloadMatData extractMatPayloadData(byte[] byteArray){
         // Convert bytes back to enum and image
         Mat image = convertByteArrayToMat(byteArray);
@@ -186,6 +187,7 @@ public class Common {
         Imgcodecs.imencode(".jpg", image, matOfByte); /////////// We can specify the extension. Now is empty
         return matOfByte.toArray();
     }
+
     private static int convertByteArrayToMessageContentType(byte[] bytes) {
         return ByteBuffer.wrap(bytes, 0, MESSAGE_CONTENT_TYPE_LENGTH).getInt();
     }

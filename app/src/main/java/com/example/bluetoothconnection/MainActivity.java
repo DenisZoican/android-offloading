@@ -35,6 +35,7 @@ import org.opencv.core.Mat;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.HashMap;
 
 public class MainActivity extends AppCompatActivity {
     private ConnectionsClient connectionsClient;

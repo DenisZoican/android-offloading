@@ -1,6 +1,6 @@
 package com.example.bluetoothconnection.communication;
 
-import static com.example.bluetoothconnection.communication.Utils.Common.SERVICE_ID;
+import static com.example.bluetoothconnection.communication.Utils.Common.createPayloadFromDeviceNode;
 import static com.example.bluetoothconnection.communication.Utils.Common.createPayloadFromMat;
 import static com.example.bluetoothconnection.communication.Utils.Common.extractDataFromPayload;
 import static com.example.bluetoothconnection.communication.Utils.Encrypting.checkAuthenticationToken;
@@ -22,8 +22,9 @@ import com.example.bluetoothconnection.communication.Extern.ExternCommunicationU
 import com.example.bluetoothconnection.communication.Extern.ExternUploadCallback;
 import com.example.bluetoothconnection.communication.Entities.CommunicationDetails;
 import com.example.bluetoothconnection.communication.Entities.DeviceInitialInfo;
+import com.example.bluetoothconnection.communication.Entities.DeviceNode;
 import com.example.bluetoothconnection.communication.PayloadDataEntities.PayloadData;
-import com.example.bluetoothconnection.communication.PayloadDataEntities.PayloadDeviceInitialInfoData;
+import com.example.bluetoothconnection.communication.PayloadDataEntities.PayloadDeviceNodeData;
 import com.example.bluetoothconnection.communication.PayloadDataEntities.PayloadMatData;
 import com.example.bluetoothconnection.communication.Utils.Common;
 import com.example.bluetoothconnection.opencv.ImageProcessing;
@@ -32,31 +33,23 @@ import com.google.android.gms.nearby.connection.ConnectionLifecycleCallback;
 import com.google.android.gms.nearby.connection.ConnectionResolution;
 import com.google.android.gms.nearby.connection.ConnectionsClient;
 import com.google.android.gms.nearby.connection.DiscoveredEndpointInfo;
-import com.google.android.gms.nearby.connection.DiscoveryOptions;
 import com.google.android.gms.nearby.connection.EndpointDiscoveryCallback;
 import com.google.android.gms.nearby.connection.Payload;
 import com.google.android.gms.nearby.connection.PayloadCallback;
 import com.google.android.gms.nearby.connection.PayloadTransferUpdate;
-import com.google.android.gms.nearby.connection.Strategy;
 
 import org.opencv.core.CvType;
 import org.opencv.core.Mat;
 import org.opencv.core.Size;
 import org.opencv.imgproc.Imgproc;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.IOException;
-import java.io.OutputStream;
-import java.net.HttpURLConnection;
-import java.net.URL;
 import java.security.PublicKey;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 public class Discovery extends Device{
-    private Map<String,DeviceInitialInfo> discoveredDevices = new HashMap<>();
+    //private Map<String,DeviceInitialInfo> discoveredDevices = new HashMap<>();
     //delete
     //private String batteryUsage = new String();
     private Map<String, CommunicationDetails> devicesUsedInCurrentCommunicationDetails;
@@ -69,7 +62,6 @@ public class Discovery extends Device{
             public void onEndpointFound(String endpointId, DiscoveredEndpointInfo info) {
                 // We found an endpoint!
                 System.out.println(info.getServiceId()); ////////// Check if we need to check this or if it is checked automatically
-
                 String authenticationTokenAsName = null;
                 try {
                     authenticationTokenAsName = getEncryptedAuthenticationToken();
@@ -96,11 +88,23 @@ public class Discovery extends Device{
                 //////// !!!!!!!!!! verify if it throws exception when list doesn't contain endpointId !!!!!!!!!!!
                 //////////////////put it back, removed for when entering case PayloadTransferUpdate.Status.FAILURE//////////////////////////////////////
                 //discoveredDevices.remove(endpointId);
+                getNode().getNeighbours().remove(endpointId);
+                updateAllDevicesTextView();
                 //updateAllDevicesTextView();
             }
         };
     }
 
+    public void disconnect() {
+        /*this.getNode().getNeighbours().keySet().forEach((endpointId)->{
+            connectionsClient.disconnectFromEndpoint(endpointId);
+        });*/
+        this.getNode().getNeighbours().keySet().forEach(connectionsClient::disconnectFromEndpoint);
+    }
+
+    public void destroy() {
+        connectionsClient.stopDiscovery();
+    }
     private final ConnectionLifecycleCallback connectionLifecycleCallback =
             new ConnectionLifecycleCallback() {
                 @Override
@@ -123,7 +127,7 @@ public class Discovery extends Device{
                         // We're connected!
                         System.out.println("GRRRRRR CONNECTED");
 
-                        sendDeviceInitialInfo(endpointId);
+                        sendDeviceNode(endpointId);
                     } else {
                         // We were unable to connect.
                     }
@@ -140,11 +144,12 @@ public class Discovery extends Device{
         public void onPayloadReceived(String endpointId, Payload payload) {
             Toast.makeText(activity, "Received", Toast.LENGTH_SHORT).show();
 
-            boolean isDeviceInitialInfoPayload = !discoveredDevices.containsKey(endpointId);
+            boolean isDeviceInitialInfoPayload = !getNode().getNeighbours().containsKey(endpointId);
+                                                //!discoveredDevices.containsKey(endpointId);
 
             PayloadData payloadData = null;
             try {
-                payloadData = isDeviceInitialInfoPayload ? Common.extractDeviceInitialInfoFromPayload(payload) : extractDataFromPayload(payload, keyPairUsedForAESSecretKEy.getPrivate());
+                payloadData = isDeviceInitialInfoPayload ? Common.extractDeviceNodeFromPayload(payload) : extractDataFromPayload(payload, keyPairUsedForAESSecretKEy.getPrivate());
             } catch (Exception e) {
                 throw new RuntimeException(e);
             }
@@ -157,22 +162,12 @@ public class Discovery extends Device{
                         throw new RuntimeException(e);
                     }
                     break;
-                case InitialDeviceInfo:
-                    deviceInitialInfoReceivedBehavior((PayloadDeviceInitialInfoData)payloadData, endpointId);
+                case DeviceNode:
+                    deviceNodeReceivedBehavior((PayloadDeviceNodeData)payloadData, endpointId);
                     break;
                 case Error:
                     Toast.makeText(activity, "Hash didn't match", Toast.LENGTH_SHORT).show();
             }
-
-            /////////////////// CODE FOR BATTERY USAGE
-                /*
-                batteryUsage = new String(payload.asBytes());
-                Toast.makeText(activity, "S-a ajuns", Toast.LENGTH_SHORT).show();
-
-                TextView batteryTextView = activity.findViewById(R.id.batteryView);
-                batteryTextView.setText(batteryUsage);
-                 */
-
         }
 
         @Override
@@ -235,7 +230,7 @@ public class Discovery extends Device{
         int numberOfParts = 3;
         initializeImageValues(numberOfParts);
 
-        ExternCommunicationUtils.uploadMat(matImageFromGallery, false, new ExternUploadCallback() {
+       /* ExternCommunicationUtils.uploadMat(matImageFromGallery, false, new ExternUploadCallback() {
             @Override
             public void onSuccess(Mat processedMat) {
                 // Handle the processed Mat (e.g., display it in an ImageView)
@@ -247,12 +242,12 @@ public class Discovery extends Device{
                 // Handle the error
                 System.out.println(errorMessage);
             }
-        });
+        });*/
 
-        /* Send image to another device
-        String endpointId = discoveredDevices.keySet().iterator().next();
+        // Send image to another device
+        //String endpointId = discoveredDevices.keySet().iterator().next();
+        String endpointId = this.getNode().getNeighbours().keySet().iterator().next();
         sendImagePartToSingleEndpoint(endpointId, 0);
-         */
 
         /*
         //// Real dividing and sending images. Do not delete. Will be used in future
@@ -280,7 +275,8 @@ public class Discovery extends Device{
             devicesUsedInCurrentCommunicationDetails.put(endpointId,communicationDetails);
         }
 
-        PublicKey endpointPublicKey = discoveredDevices.get(endpointId).getPublicKey();
+        //PublicKey endpointPublicKey = discoveredDevices.get(endpointId).getPublicKey();
+        PublicKey endpointPublicKey = this.getNode().getNeighbours().get(endpointId).getDeviceInitialInfo().getPublicKey();
 
         Payload payload = createPayloadFromMat(partsNeededFromImage.get(imagePart), endpointPublicKey, AESSecretKeyUsedForMessages);
         connectionsClient.sendPayload(endpointId, payload);
@@ -295,20 +291,8 @@ public class Discovery extends Device{
 
         this.devicesUsedInCurrentCommunicationDetails = new HashMap<>();
     }
-
-    public void disconnect() {
-        discoveredDevices.keySet().forEach((deviceId)->{
-            connectionsClient.disconnectFromEndpoint(deviceId);
-        });
-    }
-
-    public void destroy() {
-        connectionsClient.stopDiscovery();
-    }
-
-    private void deviceInitialInfoReceivedBehavior(PayloadDeviceInitialInfoData payloadDeviceInitialInfoData, String endpointId) {
-        DeviceInitialInfo deviceInitialInfo = payloadDeviceInitialInfoData.getDeviceInitialInfo();
-        discoveredDevices.put(endpointId, deviceInitialInfo);
+    private void deviceNodeReceivedBehavior(PayloadDeviceNodeData payloadDeviceNodeData, String endpointId) {
+        this.getNode().getNeighbours().put(endpointId, payloadDeviceNodeData.getDeviceNode());
         updateAllDevicesTextView();
     }
 
@@ -360,27 +344,27 @@ public class Discovery extends Device{
         TextView allDevicesTextView = activity.findViewById(R.id.allDevices);
 
         String allDevicesIdString = "";
-        for (String s : discoveredDevices.keySet())
+        Map<String,DeviceNode> neighbours = this.getNode().getNeighbours();
+        for (String endpointId : neighbours.keySet())
         {
-            DeviceInitialInfo deviceInfo = discoveredDevices.get(s);
-            assert deviceInfo != null;
+            DeviceInitialInfo deviceInfo = neighbours.get(endpointId).getDeviceInitialInfo();
             float batteryPercentage = deviceInfo.getBatteryPercentage();
-            allDevicesIdString += s + " - Battery level: " + batteryPercentage + "%" + "\t";
+            allDevicesIdString += endpointId + " - Battery level: " + batteryPercentage + "%" + "\t";
         }
 
         allDevicesTextView.setText(allDevicesIdString);
     }
-    //delete
-    /*private void updateBatteryTextView() {
-        TextView batteryTextView = activity.findViewById(R.id.batteryView);
-        batteryTextView.setText(batteryUsage);
-    }*/
-    private void sendDeviceInitialInfo(String endpointId){
-        DeviceInitialInfo deviceInitialInfo = new DeviceInitialInfo(keyPairUsedForAESSecretKEy.getPublic(),-1);
+
+    private void sendDeviceNode(String endpointId) {
+        DeviceNode node = getNode();
+        DeviceInitialInfo deviceInitialInfo = new DeviceInitialInfo(keyPairUsedForAESSecretKEy.getPublic(),getBatteryLevel(),getCpuUsage(),getCpuCores());
+        node.setDeviceInitialInfo(deviceInitialInfo);
         try {
-            sendDeviceInitialInfo(deviceInitialInfo, endpointId);
+            Payload payload = createPayloadFromDeviceNode(node);
+            connectionsClient.sendPayload(endpointId, payload);
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
     }
+
 }

@@ -5,10 +5,12 @@ import static com.example.bluetoothconnection.communication.Utils.Common.createP
 import static com.example.bluetoothconnection.communication.Utils.Common.extractDataFromPayload;
 import static com.example.bluetoothconnection.communication.Utils.Encrypting.checkAuthenticationToken;
 import static com.example.bluetoothconnection.communication.Utils.Encrypting.getEncryptedAuthenticationToken;
+import static com.example.bluetoothconnection.opencv.ImageProcessing.convertImageToBitmap;
 import static com.example.bluetoothconnection.opencv.ImageProcessing.processImage;
 
 import android.app.Activity;
 import android.content.Context;
+import android.widget.ImageView;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -214,12 +216,12 @@ public class Advertise extends Device {
             partsNeededFromImage.remove(imagePartIndex);
 
             sendResponseImagePartToSingleEndpoint(endpointId, processedMat, getNode().getUniqueName());
-
+            ImageView imageView = activity.findViewById(R.id.imageView);
+            imageView.setImageBitmap(convertImageToBitmap(processedMat));
         }
+
         /*Mat processedMat = processImage(receivedMat);
 
-        ImageView imageView = activity.findViewById(R.id.imageView);
-        imageView.setImageBitmap(convertImageToBitmap(receivedMat));
 
         sendMessage(processedMat, getNode().getUniqueName(), endpointId);*/
     }

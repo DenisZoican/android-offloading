@@ -1,7 +1,7 @@
 package com.example.bluetoothconnection.communication;
 
 import static com.example.bluetoothconnection.communication.Utils.Common.createPayloadFromDeviceNode;
-import static com.example.bluetoothconnection.communication.Utils.Common.createPayloadFromMat;
+import static com.example.bluetoothconnection.communication.Utils.Common.createPayloadFromRequestMat;
 import static com.example.bluetoothconnection.communication.Utils.Common.extractDataFromPayload;
 import static com.example.bluetoothconnection.communication.Utils.Encrypting.checkAuthenticationToken;
 import static com.example.bluetoothconnection.communication.Utils.Encrypting.getEncryptedAuthenticationToken;
@@ -18,14 +18,13 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import com.example.bluetoothconnection.R;
-import com.example.bluetoothconnection.communication.Extern.ExternCommunicationUtils;
-import com.example.bluetoothconnection.communication.Extern.ExternUploadCallback;
 import com.example.bluetoothconnection.communication.Entities.CommunicationDetails;
 import com.example.bluetoothconnection.communication.Entities.DeviceInitialInfo;
 import com.example.bluetoothconnection.communication.Entities.DeviceNode;
 import com.example.bluetoothconnection.communication.PayloadDataEntities.PayloadData;
 import com.example.bluetoothconnection.communication.PayloadDataEntities.PayloadDeviceNodeData;
-import com.example.bluetoothconnection.communication.PayloadDataEntities.PayloadMatData;
+import com.example.bluetoothconnection.communication.PayloadDataEntities.PayloadRequestMatData;
+import com.example.bluetoothconnection.communication.PayloadDataEntities.PayloadResponseMatData;
 import com.example.bluetoothconnection.communication.Utils.Common;
 import com.example.bluetoothconnection.opencv.ImageProcessing;
 import com.google.android.gms.nearby.connection.ConnectionInfo;
@@ -45,8 +44,13 @@ import org.opencv.imgproc.Imgproc;
 
 import java.security.PublicKey;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Queue;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 public class Discovery extends Device{
     //private Map<String,DeviceInitialInfo> discoveredDevices = new HashMap<>();
@@ -55,6 +59,8 @@ public class Discovery extends Device{
     private Map<String, CommunicationDetails> devicesUsedInCurrentCommunicationDetails;
     private Map<Integer, Mat> partsNeededFromImage;
     private Mat matImageFromGallery;
+    private static final int NEIGHBOUR_TRANSPORT_PENALTY = 1; // s/ms
+    private Map<String, DeviceNode> validNeighboursUsedInCurrentCommunication;
 
     protected EndpointDiscoveryCallback getEndpointDiscoveryCallback(){
         return new EndpointDiscoveryCallback() {
@@ -154,10 +160,10 @@ public class Discovery extends Device{
                 throw new RuntimeException(e);
             }
             switch (payloadData.getMessageContentType()){
-                case Image:
+                case ResponseImage:
                     Integer imagePartIndex = devicesUsedInCurrentCommunicationDetails.get(endpointId).getImagePart();
                     try {
-                        matReceivedBehavior((PayloadMatData)payloadData, endpointId, imagePartIndex);
+                        responseMatReceivedBehavior((PayloadResponseMatData)payloadData, endpointId, imagePartIndex);
                     } catch (Exception e) {
                         throw new RuntimeException(e);
                     }
@@ -199,6 +205,7 @@ public class Discovery extends Device{
                 } else {
                     // Maximum retries reached, handle failure
                     devicesUsedInCurrentCommunicationDetails.remove(endpointId);
+                    getNode().getNeighbours().remove(endpointId);
                     //image part should be sent to another endpoint
                 }
             }
@@ -225,9 +232,61 @@ public class Discovery extends Device{
         this.matImageFromGallery = resizedMat;
     }
 
+    private DeviceNode convertGraphToTree(DeviceNode root, Set<String> visitedNodes) {
+        Queue<DeviceNode> originalsNodesQueue = new LinkedList<>();
+        Queue<DeviceNode> treeNodesQueue = new LinkedList<>();
+        DeviceNode rootCopy = root.createNodeCopyWithoutNeighbours();
+        originalsNodesQueue.add(root);
+        treeNodesQueue.add(rootCopy);
+        visitedNodes.add(root.getUniqueName());
+
+        while(!treeNodesQueue.isEmpty()) {
+            DeviceNode originalRoot = originalsNodesQueue.poll();
+            DeviceNode treeNodeRoot = treeNodesQueue.poll();
+
+            originalRoot.getNeighbours().keySet().forEach(endpointId->{
+                DeviceNode neighbour = originalRoot.getNeighbours().get(endpointId);
+                if (!visitedNodes.contains(neighbour.getUniqueName())) {
+                    DeviceNode neighbourCopy = neighbour.createNodeCopyWithoutNeighbours();
+                    originalsNodesQueue.add(neighbour);
+                    treeNodesQueue.add(neighbourCopy);
+                    visitedNodes.add(neighbour.getUniqueName());
+                    treeNodeRoot.getNeighbours().put(endpointId, neighbourCopy);
+                }
+            });
+        }
+
+        return rootCopy;
+    }
+
+    private void setNodesWeight(DeviceNode treeNode) {
+        DeviceInitialInfo deviceInitialInfo = treeNode.getDeviceInitialInfo();
+        double formula = (deviceInitialInfo.getCpuCores()*(1-deviceInitialInfo.getCpuUsage())/100)*deviceInitialInfo.getBatteryPercentage();
+        if (treeNode.getNeighbours().isEmpty()) {
+            treeNode.setWeight(formula);
+            return;
+        }
+
+        treeNode.getNeighbours().keySet().forEach(endpointId->{
+            DeviceNode neighbour = treeNode.getNeighbours().get(endpointId);
+            setNodesWeight(neighbour);
+        });
+
+        double neighboursWeightSum = treeNode.getNeighbours().values().stream().map(DeviceNode::getWeight).reduce(0.0, Double::sum);
+
+        double currentNodeWeight = formula + neighboursWeightSum - treeNode.getNeighbours().size()*NEIGHBOUR_TRANSPORT_PENALTY;
+        treeNode.setWeight(currentNodeWeight);
+
+    }
     private void sendMessage(Mat image) throws Exception {
+        Set<String> visitedNodes = new HashSet<>();
+        DeviceNode treeNode = convertGraphToTree(getNode(), visitedNodes);
+        setNodesWeight(treeNode);
+        validNeighboursUsedInCurrentCommunication  = treeNode.getNeighbours().entrySet().stream().filter(entry-> entry.getValue().getWeight() > 0.5)
+                                                    .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+
         /// Simulate multiple devices when we have only one
-        int numberOfParts = 3;
+        int numberOfParts = validNeighboursUsedInCurrentCommunication.size();
         initializeImageValues(numberOfParts);
 
        /* ExternCommunicationUtils.uploadMat(matImageFromGallery, false, new ExternUploadCallback() {
@@ -245,9 +304,16 @@ public class Discovery extends Device{
         });*/
 
         // Send image to another device
-        //String endpointId = discoveredDevices.keySet().iterator().next();
-        String endpointId = this.getNode().getNeighbours().keySet().iterator().next();
-        sendImagePartToSingleEndpoint(endpointId, 0);
+        //String endpointId = this.getNode().getNeighbours().keySet().iterator().next();
+        int index = 0;
+        for (String endpointId : validNeighboursUsedInCurrentCommunication.keySet()) {
+            try {
+                sendImagePartToSingleEndpoint(endpointId, index);
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+            index ++;
+        }
 
         /*
         //// Real dividing and sending images. Do not delete. Will be used in future
@@ -278,7 +344,8 @@ public class Discovery extends Device{
         //PublicKey endpointPublicKey = discoveredDevices.get(endpointId).getPublicKey();
         PublicKey endpointPublicKey = this.getNode().getNeighbours().get(endpointId).getDeviceInitialInfo().getPublicKey();
 
-        Payload payload = createPayloadFromMat(partsNeededFromImage.get(imagePart), endpointPublicKey, AESSecretKeyUsedForMessages);
+        DeviceNode neighbourTreeNode = validNeighboursUsedInCurrentCommunication.get(endpointId);
+        Payload payload = createPayloadFromRequestMat(partsNeededFromImage.get(imagePart), neighbourTreeNode, endpointPublicKey, AESSecretKeyUsedForMessages);
         connectionsClient.sendPayload(endpointId, payload);
     }
 
@@ -296,8 +363,8 @@ public class Discovery extends Device{
         updateAllDevicesTextView();
     }
 
-    private void matReceivedBehavior(PayloadMatData payloadMatData, String endpointId, int imagePartIndex) throws Exception {
-        Mat receivedMat = payloadMatData.getImage();
+    private void responseMatReceivedBehavior(PayloadResponseMatData payloadRequestMatData, String endpointId, int imagePartIndex) throws Exception {
+        Mat receivedMat = payloadRequestMatData.getImage();
 
         replacePartInImageFromGallery(receivedMat, imagePartIndex);
 

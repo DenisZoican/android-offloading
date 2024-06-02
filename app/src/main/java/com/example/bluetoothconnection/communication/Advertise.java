@@ -1,7 +1,7 @@
 package com.example.bluetoothconnection.communication;
 
 import static com.example.bluetoothconnection.communication.Utils.Common.createPayloadFromDeviceNode;
-import static com.example.bluetoothconnection.communication.Utils.Common.createPayloadFromMat;
+import static com.example.bluetoothconnection.communication.Utils.Common.createPayloadFromResponseMat;
 import static com.example.bluetoothconnection.communication.Utils.Common.extractDataFromPayload;
 import static com.example.bluetoothconnection.communication.Utils.Encrypting.checkAuthenticationToken;
 import static com.example.bluetoothconnection.communication.Utils.Encrypting.getEncryptedAuthenticationToken;
@@ -10,8 +10,6 @@ import static com.example.bluetoothconnection.opencv.ImageProcessing.processImag
 
 import android.app.Activity;
 import android.content.Context;
-import android.view.View;
-import android.widget.Button;
 import android.widget.ImageView;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -21,7 +19,7 @@ import com.example.bluetoothconnection.communication.Entities.DeviceInitialInfo;
 import com.example.bluetoothconnection.communication.Entities.DeviceNode;
 import com.example.bluetoothconnection.communication.PayloadDataEntities.PayloadData;
 import com.example.bluetoothconnection.communication.PayloadDataEntities.PayloadDeviceNodeData;
-import com.example.bluetoothconnection.communication.PayloadDataEntities.PayloadMatData;
+import com.example.bluetoothconnection.communication.PayloadDataEntities.PayloadRequestMatData;
 import com.example.bluetoothconnection.communication.Utils.Common;
 import com.google.android.gms.nearby.connection.ConnectionInfo;
 import com.google.android.gms.nearby.connection.ConnectionLifecycleCallback;
@@ -126,9 +124,9 @@ public class Advertise extends Device {
             }
 
             switch (payloadData.getMessageContentType()){
-                case Image:
+                case RequestImage:
                     try {
-                        matReceivedBehavior((PayloadMatData)payloadData, endpointId);
+                        requestMatReceivedBehavior((PayloadRequestMatData)payloadData, endpointId);
                     } catch (Exception e) {
                         throw new RuntimeException(e);
                     }
@@ -159,14 +157,14 @@ public class Advertise extends Device {
         startAdvertise();
     }
 
-    public void sendMessage(Mat image, String endpointId) throws Exception {
+    public void sendMessage(Mat image, String processorUniqueName, String endpointId) throws Exception {
         PublicKey senderPublicKey = getNode().getNeighbours().get(endpointId).getDeviceInitialInfo().getPublicKey();
         if(senderPublicKey == null){
             Toast.makeText(activity, "No public key found for discovery device.", Toast.LENGTH_SHORT).show();
             return;
         }
 
-        Payload processedPayload = createPayloadFromMat(image, senderPublicKey, AESSecretKeyUsedForMessages);
+        Payload processedPayload = createPayloadFromResponseMat(image, processorUniqueName, senderPublicKey, AESSecretKeyUsedForMessages);
         connectionsClient.sendPayload(endpointId, processedPayload);
     }
     public void disconnect() {
@@ -185,8 +183,8 @@ public class Advertise extends Device {
     }
 
 
-    private void matReceivedBehavior(PayloadMatData payloadMatData, String endpointId) throws Exception {
-        Mat receivedMat = payloadMatData.getImage();
+    private void requestMatReceivedBehavior(PayloadRequestMatData payloadRequestMatData, String endpointId) throws Exception {
+        Mat receivedMat = payloadRequestMatData.getImage();
 
         try {
             Thread.sleep(5000);
@@ -199,7 +197,7 @@ public class Advertise extends Device {
         ImageView imageView = activity.findViewById(R.id.imageView);
         imageView.setImageBitmap(convertImageToBitmap(receivedMat));
 
-        sendMessage(processedMat, endpointId);
+        sendMessage(processedMat, getNode().getUniqueName(), endpointId);
     }
     private void sendDeviceNode(String endpointId) {
         /////////////should not send all neighbours, just calculate the weight and send it
@@ -207,20 +205,56 @@ public class Advertise extends Device {
         DeviceNode node = getNode();
         DeviceInitialInfo deviceInitialInfo = new DeviceInitialInfo(keyPairUsedForAESSecretKEy.getPublic(),getBatteryLevel(),getCpuUsage(),getCpuCores());
 
-        DeviceNode node_copil1 = new DeviceNode();
-        DeviceNode node_copil1_copil1 = new DeviceNode();
-        DeviceNode node_copil1_copil2 = new DeviceNode();
-        DeviceNode node_copil2= new DeviceNode();
-        DeviceNode node_copil2_copil1 = new DeviceNode();
+        DeviceNode copil1 = new DeviceNode();
+        DeviceNode copil2 = new DeviceNode();
+        DeviceNode copil3 = new DeviceNode();
+        DeviceNode copil1_copil1= new DeviceNode();
+        DeviceNode copil2_copil1 = new DeviceNode();
+        DeviceNode copil2_copil1_copil1 = new DeviceNode();
 
-        node.getNeighbours().put("shakalaka1", node_copil1);
-        node.getNeighbours().put("shakalaka2", node_copil2);
-        node.getNeighbours().put("shakalaka3", new DeviceNode());
+        DeviceInitialInfo copil1_deviceInitialInfo = new DeviceInitialInfo(keyPairUsedForAESSecretKEy.getPublic(), 55, 0.73, 8);
+        DeviceInitialInfo copil2_deviceInitialInfo = new DeviceInitialInfo(keyPairUsedForAESSecretKEy.getPublic(), 27, 0.01, 8);
+        DeviceInitialInfo copil3_deviceInitialInfo = new DeviceInitialInfo(keyPairUsedForAESSecretKEy.getPublic(), 49, 0.56, 16);
+        DeviceInitialInfo copil1_copil1_deviceInitialInfo = new DeviceInitialInfo(keyPairUsedForAESSecretKEy.getPublic(), 50, 0.79, 6);
+        DeviceInitialInfo copil2_copil1_deviceInitialInfo = new DeviceInitialInfo(keyPairUsedForAESSecretKEy.getPublic(), 23, 0.88, 8);
+        DeviceInitialInfo copil2_copil1_copil1_deviceInitialInfo = new DeviceInitialInfo(keyPairUsedForAESSecretKEy.getPublic(), 98, 0.53, 8);
 
-        node_copil1.getNeighbours().put("shakalaka1_copil1", node_copil1_copil1);
-        node_copil1_copil1.getNeighbours().put("shakalaka1_copil2", node_copil1_copil2);
+        copil1.setDeviceInitialInfo(copil1_deviceInitialInfo);
+        copil2.setDeviceInitialInfo(copil2_deviceInitialInfo);
+        copil3.setDeviceInitialInfo(copil3_deviceInitialInfo);
+        copil1_copil1.setDeviceInitialInfo(copil1_copil1_deviceInitialInfo);
+        copil2_copil1.setDeviceInitialInfo(copil2_copil1_deviceInitialInfo);
+        copil2_copil1_copil1.setDeviceInitialInfo(copil2_copil1_copil1_deviceInitialInfo);
 
-        node_copil2.getNeighbours().put("shakalaka2_copil1", node_copil2_copil1);
+
+        node.getNeighbours().put("1", copil1);
+        node.getNeighbours().put("2", copil2);
+        node.getNeighbours().put("3", copil3);
+        node.getNeighbours().put("211", copil2_copil1_copil1);
+
+        copil1.getNeighbours().put("11", copil1_copil1);
+        copil1.getNeighbours().put("2", copil2);
+        copil1.getNeighbours().put(getNode().getUniqueName(), node);
+
+        copil1_copil1.getNeighbours().put("1", copil1);
+        copil1_copil1.getNeighbours().put("2", copil2);
+
+
+        copil2.getNeighbours().put(getNode().getUniqueName(), node);
+        copil2.getNeighbours().put("1", copil1);
+        copil2.getNeighbours().put("11", copil1_copil1);
+        copil2.getNeighbours().put("21", copil2_copil1);
+
+        copil2_copil1.getNeighbours().put("2", copil2);
+        copil2_copil1.getNeighbours().put("211", copil2_copil1_copil1);
+
+        copil2_copil1_copil1.getNeighbours().put("21", copil2_copil1);
+        copil2_copil1_copil1.getNeighbours().put("3", copil3);
+        copil2_copil1_copil1.getNeighbours().put(getNode().getUniqueName(), node);
+
+        copil3.getNeighbours().put(getNode().getUniqueName(), node);
+        copil3.getNeighbours().put("211", copil2_copil1_copil1);
+
 
         node.setDeviceInitialInfo(deviceInitialInfo);
         try {

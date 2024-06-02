@@ -5,12 +5,10 @@ import static com.example.bluetoothconnection.communication.Utils.Common.createP
 import static com.example.bluetoothconnection.communication.Utils.Common.extractDataFromPayload;
 import static com.example.bluetoothconnection.communication.Utils.Encrypting.checkAuthenticationToken;
 import static com.example.bluetoothconnection.communication.Utils.Encrypting.getEncryptedAuthenticationToken;
-import static com.example.bluetoothconnection.opencv.ImageProcessing.convertImageToBitmap;
 import static com.example.bluetoothconnection.opencv.ImageProcessing.processImage;
 
 import android.app.Activity;
 import android.content.Context;
-import android.widget.ImageView;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -34,8 +32,19 @@ import com.google.android.gms.nearby.connection.PayloadTransferUpdate;
 import org.opencv.core.Mat;
 
 import java.security.PublicKey;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 public class Advertise extends Device {
+    public Advertise(Context context, Activity activity, ConnectionsClient connectionsClient) throws Exception {
+        super(context, activity, connectionsClient);
+    }
+    public void start() throws Exception {
+        activity.setContentView(R.layout.activity_advertise_main);
+
+        startDiscovery();
+        startAdvertise();
+    }
 
     protected EndpointDiscoveryCallback getEndpointDiscoveryCallback(){
         return new EndpointDiscoveryCallback() {
@@ -146,17 +155,6 @@ public class Advertise extends Device {
         }
     };
 
-    public Advertise(Context context, Activity activity, ConnectionsClient connectionsClient) throws Exception {
-        super(context, activity, connectionsClient);
-    }
-
-    public void start() throws Exception {
-        activity.setContentView(R.layout.activity_advertise_main);
-
-        startDiscovery();
-        startAdvertise();
-    }
-
     public void sendMessage(Mat image, String processorUniqueName, String endpointId) throws Exception {
         PublicKey senderPublicKey = getNode().getNeighbours().get(endpointId).getDeviceInitialInfo().getPublicKey();
         if(senderPublicKey == null){
@@ -186,18 +184,44 @@ public class Advertise extends Device {
     private void requestMatReceivedBehavior(PayloadRequestMatData payloadRequestMatData, String endpointId) throws Exception {
         Mat receivedMat = payloadRequestMatData.getImage();
 
-        try {
-            Thread.sleep(5000);
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
+        DeviceNode currentNode = payloadRequestMatData.getTreeNode();
+        /// Simulate multiple devices when we have only one
+        validNeighboursUsedInCurrentCommunication  = currentNode.getNeighbours().entrySet().stream().filter(entry-> entry.getValue().getTotalWeight() > 10000)
+                                                    .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+        int numberOfParts = validNeighboursUsedInCurrentCommunication.size();
+        if(currentNode.getPersonalWeight() != 0) {
+            numberOfParts++;
+        }
+        initializeImageValues(receivedMat, numberOfParts);
+
+        // Send image to another device
+        //String endpointId = this.getNode().getNeighbours().keySet().iterator().next();
+        int index = 0;
+        for (String neighbourEndpointId : validNeighboursUsedInCurrentCommunication.keySet()) {
+            try {
+                sendRequestImagePartToSingleEndpoint(neighbourEndpointId, index);
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+            index ++;
         }
 
-        Mat processedMat = processImage(receivedMat);
+        if(validNeighboursUsedInCurrentCommunication.keySet().size() < numberOfParts){
+            int imagePartIndex = validNeighboursUsedInCurrentCommunication.keySet().size();
+
+            Mat partOfImageThatNeedsProcessed = partsNeededFromImage.get(imagePartIndex);
+            Mat processedMat = processImage(partOfImageThatNeedsProcessed);
+            partsNeededFromImage.remove(imagePartIndex);
+
+            sendResponseImagePartToSingleEndpoint(endpointId, processedMat, getNode().getUniqueName());
+
+        }
+        /*Mat processedMat = processImage(receivedMat);
 
         ImageView imageView = activity.findViewById(R.id.imageView);
         imageView.setImageBitmap(convertImageToBitmap(receivedMat));
 
-        sendMessage(processedMat, getNode().getUniqueName(), endpointId);
+        sendMessage(processedMat, getNode().getUniqueName(), endpointId);*/
     }
     private void sendDeviceNode(String endpointId) {
         /////////////should not send all neighbours, just calculate the weight and send it

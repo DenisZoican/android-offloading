@@ -1,8 +1,6 @@
 package com.example.bluetoothconnection.communication.Entities;
 
-import android.content.Context;
 import android.os.Build;
-import android.provider.Settings;
 
 import java.io.Serializable;
 import java.util.HashMap;
@@ -12,7 +10,9 @@ import java.util.UUID;
 public class DeviceNode implements Serializable {
     private DeviceInitialInfo deviceInitialInfo;
     private Map<String,DeviceNode> neighbours;
-    private double weight;
+    private double totalWeight;
+
+    private double personalWeight;
     private String uniqueName = UUID.randomUUID().toString();//getHardwareID();
 
     public DeviceNode() {
@@ -62,12 +62,17 @@ public class DeviceNode implements Serializable {
                 Build.USER.length() % 10; // 13 digits
         return devIDShort;
     }
-    public double getWeight() {
-        return weight;
+    public double getTotalWeight() {
+        return totalWeight;
     }
-    public void setWeight(double weight) {
-        this.weight = weight;
+    public void setTotalWeight(double totalWeight) {
+        this.totalWeight = totalWeight;
+    }
+    public double getPersonalWeight() {
+        return personalWeight;
     }
 
-
+    public void setPersonalWeight(double personalWeight) {
+        this.personalWeight = personalWeight;
+    }
 }

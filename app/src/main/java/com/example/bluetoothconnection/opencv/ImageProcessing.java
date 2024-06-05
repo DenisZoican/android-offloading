@@ -36,7 +36,7 @@ public class ImageProcessing {
     }
 
     /// destMat - CVU_4, subMat - CVU_1
-    public static void replaceMat(Mat destMat, Mat subMat, int beginRowIndex){
+    public static void replaceMat(Mat destMat, Mat subMat, int heightOffset){
         //Mat resultMat = destMat.clone();
 
         int destMatHeight = destMat.height();
@@ -44,7 +44,6 @@ public class ImageProcessing {
         int subMatWidth = subMat.width();
         int subMatHeight = subMat.height();
 
-        int heightOffset = beginRowIndex*subMatHeight;
         for(int i=heightOffset;i<heightOffset+subMatHeight && i<destMatHeight;i++){
             for(int j=0;j<subMatWidth;j++){
                 double grayScaleValue = subMat.get(i - heightOffset, j)[0];

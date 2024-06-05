@@ -61,6 +61,7 @@ public abstract class Device {
     private int cpuCores;
     private DeviceNode node;
     Map<String, DeviceNode> validNeighboursUsedInCurrentCommunication;
+    private int imagePartHeight;
 
     public Device(Context context, Activity activity, ConnectionsClient connectionsClient) throws Exception {
         this.activity = activity;
@@ -199,6 +200,8 @@ public abstract class Device {
             this.partsNeededFromImage.put(i,divideImages.get(i));
         }
 
+        this.imagePartHeight = image.height()/numberOfParts;
+
         this.devicesUsedInCurrentCommunicationDetails = new HashMap<>();
     }
 
@@ -217,19 +220,20 @@ public abstract class Device {
         PublicKey endpointPublicKey = this.getNode().getNeighbours().get(endpointId).getDeviceInitialInfo().getPublicKey();
 
         DeviceNode neighbourTreeNode = validNeighboursUsedInCurrentCommunication.get(endpointId);
-        Payload payload = createPayloadFromRequestMat(partsNeededFromImage.get(imagePart), neighbourTreeNode, endpointPublicKey, AESSecretKeyUsedForMessages);
+        int linePositionForImagePart = imagePartHeight*imagePart;
+        Payload payload = createPayloadFromRequestMat(partsNeededFromImage.get(imagePart), linePositionForImagePart, neighbourTreeNode, endpointPublicKey, AESSecretKeyUsedForMessages);
         connectionsClient.sendPayload(endpointId, payload);
     }
 
-    protected void sendResponseImagePartToSingleEndpoint(String endpointId, Mat processedImage, String processorUniqueName) throws Exception {
+    protected void sendResponseImagePartToSingleEndpoint(String endpointId, Mat processedImage, int linePositionForImagePart, String processorUniqueName) throws Exception {
         PublicKey endpointPublicKey = this.getNode().getNeighbours().get(endpointId).getDeviceInitialInfo().getPublicKey();
 
-        Payload payload = createPayloadFromResponseMat(processedImage, processorUniqueName, endpointPublicKey, AESSecretKeyUsedForMessages);
+        Payload payload = createPayloadFromResponseMat(processedImage, linePositionForImagePart, processorUniqueName, endpointPublicKey, AESSecretKeyUsedForMessages);
         connectionsClient.sendPayload(endpointId, payload);
     }
 
-    protected void replacePartInImageFromGallery(Mat image, Mat imagePart, int imagePartIndex){
-        replaceMat(image, imagePart, imagePartIndex);
+    protected void replacePartInImageFromGallery(Mat image, Mat imagePart, int linePositionForImagePart){
+        replaceMat(image, imagePart, linePositionForImagePart);
         ImageView imageView = activity.findViewById(R.id.imageView);
         Bitmap receivedImageBitmap = convertImageToBitmap(image);
         imageView.setImageBitmap(receivedImageBitmap);

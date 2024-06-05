@@ -9,10 +9,13 @@ public class PayloadResponseMatData extends PayloadData{
     private final Mat image;
     private final String processorNodeUniqueName;
 
-    public PayloadResponseMatData(Mat image, String processorNodeUniqueName) {
+    private final int linePosition;
+
+    public PayloadResponseMatData(Mat image, String processorNodeUniqueName, int linePosition) {
         super(Common.MessageContentType.ResponseImage);
         this.image = image;
         this.processorNodeUniqueName = processorNodeUniqueName;
+        this.linePosition = linePosition;
     }
 
     public Mat getImage() {

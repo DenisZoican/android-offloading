@@ -20,6 +20,8 @@ import com.example.bluetoothconnection.R;
 import com.example.bluetoothconnection.communication.Entities.CommunicationDetails;
 import com.example.bluetoothconnection.communication.Entities.DeviceInitialInfo;
 import com.example.bluetoothconnection.communication.Entities.DeviceNode;
+import com.example.bluetoothconnection.communication.Extern.ExternCommunicationUtils;
+import com.example.bluetoothconnection.communication.Extern.ExternUploadCallback;
 import com.example.bluetoothconnection.communication.PayloadDataEntities.PayloadData;
 import com.example.bluetoothconnection.communication.PayloadDataEntities.PayloadDeviceNodeData;
 import com.example.bluetoothconnection.communication.PayloadDataEntities.PayloadResponseMatData;
@@ -50,6 +52,8 @@ public class Discovery extends Device{
     private Mat matImageFromGallery;
     private static final int NEIGHBOUR_TRANSPORT_PENALTY = 1; // s/ms
     private final int MAX_RETRIES = 10;
+    private Set<String> familiarNodesUniqueNames = new HashSet<>();
+    private boolean hasConnectedToAdvertise = false;
 
     public Discovery(Context context, Activity activity, ConnectionsClient connectionsClient) throws Exception {
         super(context, activity, connectionsClient);
@@ -66,6 +70,9 @@ public class Discovery extends Device{
         return new EndpointDiscoveryCallback() {
             @Override
             public void onEndpointFound(String endpointId, DiscoveredEndpointInfo info) {
+                if(hasConnectedToAdvertise) {
+                    return;
+                }
                 // We found an endpoint!
                 System.out.println(info.getServiceId()); ////////// Check if we need to check this or if it is checked automatically
                 String authenticationTokenAsName = null;
@@ -132,7 +139,7 @@ public class Discovery extends Device{
                     if (result.getStatus().isSuccess()) {
                         // We're connected!
                         System.out.println("GRRRRRR CONNECTED");
-
+                        hasConnectedToAdvertise = true;
                         sendDeviceNode(endpointId);
                     } else {
                         // We were unable to connect.
@@ -249,6 +256,9 @@ public class Discovery extends Device{
     private void setNodesWeight(DeviceNode treeNode) {
         DeviceInitialInfo deviceInitialInfo = treeNode.getDeviceInitialInfo();
         double formula = (deviceInitialInfo.getCpuCores()*(1-deviceInitialInfo.getCpuUsage())/100)*deviceInitialInfo.getBatteryPercentage();
+        if (familiarNodesUniqueNames.contains(treeNode.getUniqueName())) {
+            formula +=1;
+        }
         treeNode.setPersonalWeight(formula);
         if (treeNode.getNeighbours().isEmpty()) {
             treeNode.setTotalWeight(formula);
@@ -280,70 +290,57 @@ public class Discovery extends Device{
         /// Simulate multiple devices when we have only one
         int numberOfParts = validNeighboursUsedInCurrentCommunication.size();
 
-        if(treeNode.getPersonalWeight() > 0.5) {
+        if(treeNode.getPersonalWeight() > 10000) {
             numberOfParts++;
         }
-        initializeImageValues(matImageFromGallery, numberOfParts);
 
-       /* ExternCommunicationUtils.uploadMat(matImageFromGallery, false, new ExternUploadCallback() {
-            @Override
-            public void onSuccess(Mat processedMat) {
-                // Handle the processed Mat (e.g., display it in an ImageView)
-                replacePartInImageFromGallery(processedMat, 0);
+        if (numberOfParts > 0) {
+            initializeImageValues(matImageFromGallery, numberOfParts);
+            int index = 0;
+            for (String endpointId : validNeighboursUsedInCurrentCommunication.keySet()) {
+                try {
+                    sendRequestImagePartToSingleEndpoint(endpointId, index);
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+                index ++;
             }
 
-            @Override
-            public void onFailure(String errorMessage) {
-                // Handle the error
-                System.out.println(errorMessage);
-            }
-        });*/
+            if(validNeighboursUsedInCurrentCommunication.keySet().size() < numberOfParts){
+                int imagePartIndex = validNeighboursUsedInCurrentCommunication.keySet().size();
 
-        // Send image to another device
-        //String endpointId = this.getNode().getNeighbours().keySet().iterator().next();
-        int index = 0;
-        for (String endpointId : validNeighboursUsedInCurrentCommunication.keySet()) {
-            try {
-                sendRequestImagePartToSingleEndpoint(endpointId, index);
-            } catch (Exception e) {
-                throw new RuntimeException(e);
+                Mat partOfImageThatNeedsProcessed = partsNeededFromImage.get(imagePartIndex);
+                Mat processedMat = processImage(partOfImageThatNeedsProcessed);
+
+                replacePartInImageFromGallery(matImageFromGallery, processedMat, imagePartIndex);
+
+                partsNeededFromImage.remove(imagePartIndex);
             }
-            index ++;
+        } else {
+            ExternCommunicationUtils.uploadMat(matImageFromGallery, true, new ExternUploadCallback() {
+                @Override
+                public void onSuccess(Mat processedMat) {
+                    // Handle the processed Mat (e.g., display it in an ImageView)
+                    replacePartInImageFromGallery(matImageFromGallery, processedMat, 0);
+                }
+                @Override
+                public void onFailure(String errorMessage) {
+                    // Handle the error
+                    System.out.println(errorMessage);
+                }
+            });
         }
-
-        if(validNeighboursUsedInCurrentCommunication.keySet().size() < numberOfParts){
-            int imagePartIndex = validNeighboursUsedInCurrentCommunication.keySet().size();
-
-            Mat partOfImageThatNeedsProcessed = partsNeededFromImage.get(imagePartIndex);
-            Mat processedMat = processImage(partOfImageThatNeedsProcessed);
-
-            replacePartInImageFromGallery(matImageFromGallery, processedMat, imagePartIndex);
-
-            partsNeededFromImage.remove(imagePartIndex);
-        }
-
-        /*
-        //// Real dividing and sending images. Do not delete. Will be used in future
-        List<Mat> divideImages = ImageProcessing.divideImages(imageFromGallery,allDevicesIds.size());
-        List<String> allDevicesArray = new ArrayList<>(allDevicesIds);
-        int allDevicesArrayLength = allDevicesArray.size();
-
-        for(int i=0;i<allDevicesArrayLength;i++){
-            String deviceId = allDevicesArray.get(i);
-            Payload payload = convertMatToPayload(divideImages.get(i));
-
-            devicesUsedInCurrentCommunication.put(deviceId, i);
-            connectionsClient.sendPayload(deviceId, payload);
-        }*/
     }
 
     private void deviceNodeReceivedBehavior(PayloadDeviceNodeData payloadDeviceNodeData, String endpointId) {
+        //DeviceNode neighbourDeviceNode = payloadDeviceNodeData.getDeviceNode();
+        //neighbourDeviceNode.getNeighbours().put()
         this.getNode().getNeighbours().put(endpointId, payloadDeviceNodeData.getDeviceNode());
         updateAllDevicesTextView();
     }
 
-    private void responseMatReceivedBehavior(PayloadResponseMatData payloadRequestMatData, String endpointId, int imagePartIndex) throws Exception {
-        Mat receivedMat = payloadRequestMatData.getImage();
+    private void responseMatReceivedBehavior(PayloadResponseMatData payloadResponseMatData, String endpointId, int imagePartIndex) throws Exception {
+        Mat receivedMat = payloadResponseMatData.getImage();
 
         replacePartInImageFromGallery(matImageFromGallery, receivedMat, imagePartIndex);
 
@@ -354,6 +351,7 @@ public class Discovery extends Device{
             Integer firstNeededPartIndex = partsNeededFromImage.keySet().iterator().next();
             sendRequestImagePartToSingleEndpoint(endpointId, firstNeededPartIndex);
         }
+        familiarNodesUniqueNames.add(payloadResponseMatData.getProcessorNodeUniqueName());
     }
 
     /////////////// UI Elements
@@ -368,7 +366,7 @@ public class Discovery extends Device{
             @Override
             public void onClick(View v) {
                 ImageView imageView = activity.findViewById(R.id.imageView);
-                imageView.setImageBitmap(convertImageToBitmap(matImageFromGallery));
+                //imageView.setImageBitmap(convertImageToBitmap(matImageFromGallery));
                 try {
                     sendMessage();
                 } catch (Exception e) {

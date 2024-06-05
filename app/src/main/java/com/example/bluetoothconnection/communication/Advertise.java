@@ -81,7 +81,8 @@ public class Advertise extends Device {
                 //////// !!!!!!!!!! verify if it throws exception when list doesn't contain endpointId !!!!!!!!!!!
                 //////////////////put it back, removed for when entering case PayloadTransferUpdate.Status.FAILURE//////////////////////////////////////
                 //discoveredDevices.remove(endpointId);
-                //updateAllDevicesTextView();
+                getNode().getNeighbours().remove(endpointId);
+                updateAllDevicesTextView();
             }
         };
     }
@@ -105,9 +106,8 @@ public class Advertise extends Device {
             public void onConnectionResult(String endpointId, ConnectionResolution result) {
                 if (result.getStatus().isSuccess()) {
                     System.out.println("Connection accepted");
-                    //discoveryDeviceId = endpointId;
-                    updateAllDevicesTextView();
                         //sendDeviceInitialInfo(endpointId); ////// SHOULD PUT BATTERY INFO HERE - with love for Aidel
+
                     sendDeviceNode(endpointId);
                 } else {
                     // We were unable to connect.
@@ -156,17 +156,6 @@ public class Advertise extends Device {
             // Payload transfer status updated.
         }
     };
-
-    public void sendMessage(Mat image, String processorUniqueName, String endpointId) throws Exception {
-        PublicKey senderPublicKey = getNode().getNeighbours().get(endpointId).getDeviceInitialInfo().getPublicKey();
-        if(senderPublicKey == null){
-            Toast.makeText(activity, "No public key found for discovery device.", Toast.LENGTH_SHORT).show();
-            return;
-        }
-
-        Payload processedPayload = createPayloadFromResponseMat(image, processorUniqueName, senderPublicKey, AESSecretKeyUsedForMessages);
-        connectionsClient.sendPayload(endpointId, processedPayload);
-    }
     public void disconnect() {
         for(String neighbourEndpointId : getNode().getNeighbours().keySet()) {
             connectionsClient.disconnectFromEndpoint(neighbourEndpointId);
@@ -180,6 +169,7 @@ public class Advertise extends Device {
     private void deviceNodeReceivedBehavior(PayloadDeviceNodeData payloadDeviceNodeData, String endpointId) {
         System.out.println("mi-a dat pachet");
         this.getNode().getNeighbours().put(endpointId, payloadDeviceNodeData.getDeviceNode());
+        updateAllDevicesTextView();
     }
 
 
@@ -188,7 +178,7 @@ public class Advertise extends Device {
 
         DeviceNode currentNode = payloadRequestMatData.getTreeNode();
         /// Simulate multiple devices when we have only one
-        validNeighboursUsedInCurrentCommunication  = currentNode.getNeighbours().entrySet().stream().filter(entry-> entry.getValue().getTotalWeight() > 10000)
+        validNeighboursUsedInCurrentCommunication  = currentNode.getNeighbours().entrySet().stream().filter(entry-> entry.getValue().getTotalWeight() > 0.2)
                                                     .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
         int numberOfParts = validNeighboursUsedInCurrentCommunication.size();
         if(currentNode.getPersonalWeight() != 0) {
@@ -215,15 +205,10 @@ public class Advertise extends Device {
             Mat processedMat = processImage(partOfImageThatNeedsProcessed);
             partsNeededFromImage.remove(imagePartIndex);
 
-            sendResponseImagePartToSingleEndpoint(endpointId, processedMat, getNode().getUniqueName());
+            sendResponseImagePartToSingleEndpoint(endpointId, processedMat, payloadRequestMatData.getLinePosition(), getNode().getUniqueName());
             ImageView imageView = activity.findViewById(R.id.imageView);
             imageView.setImageBitmap(convertImageToBitmap(processedMat));
         }
-
-        /*Mat processedMat = processImage(receivedMat);
-
-
-        sendMessage(processedMat, getNode().getUniqueName(), endpointId);*/
     }
     private void sendDeviceNode(String endpointId) {
         /////////////should not send all neighbours, just calculate the weight and send it
@@ -231,7 +216,7 @@ public class Advertise extends Device {
         DeviceNode node = getNode();
         DeviceInitialInfo deviceInitialInfo = new DeviceInitialInfo(keyPairUsedForAESSecretKEy.getPublic(),getBatteryLevel(),getCpuUsage(),getCpuCores());
 
-        DeviceNode copil1 = new DeviceNode();
+        /*DeviceNode copil1 = new DeviceNode();
         DeviceNode copil2 = new DeviceNode();
         DeviceNode copil3 = new DeviceNode();
         DeviceNode copil1_copil1= new DeviceNode();
@@ -279,7 +264,7 @@ public class Advertise extends Device {
         copil2_copil1_copil1.getNeighbours().put(getNode().getUniqueName(), node);
 
         copil3.getNeighbours().put(getNode().getUniqueName(), node);
-        copil3.getNeighbours().put("211", copil2_copil1_copil1);
+        copil3.getNeighbours().put("211", copil2_copil1_copil1);*/
 
 
         node.setDeviceInitialInfo(deviceInitialInfo);
@@ -294,7 +279,7 @@ public class Advertise extends Device {
     private void updateAllDevicesTextView(){
         TextView allDevicesTextView = activity.findViewById(R.id.allDevices);
         String allNeighboursText = getNode().getNeighbours().keySet().stream().reduce("", (previousElement, currentElement)->{
-            return previousElement + "\n" + currentElement;
+            return previousElement + " " + currentElement;
         });
         allDevicesTextView.setText(allNeighboursText);
     }

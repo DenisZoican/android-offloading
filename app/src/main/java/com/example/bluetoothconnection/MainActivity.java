@@ -71,7 +71,7 @@ public class MainActivity extends AppCompatActivity {
         Permissions permissions = new Permissions(this);
         permissions.checkAllPermissions(); //// !!!! When it throws an error, where do you go to check the error?
         // Permission is already granted
-
+        //String modelSamsung = Build.MODEL; //SM-G991B
         boolean isAdvertise = !Build.MODEL.equals("Pixel 7");
         try {
             device = isAdvertise ? new Advertise(this.context, this, connectionsClient) : new Discovery(this.context, this, connectionsClient);

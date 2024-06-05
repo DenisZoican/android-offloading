@@ -33,7 +33,6 @@ public class DeviceNode implements Serializable {
         return uniqueName;
     }
 
-
     public void setUniqueName(String uniqueName) {
         this.uniqueName = uniqueName;
     }

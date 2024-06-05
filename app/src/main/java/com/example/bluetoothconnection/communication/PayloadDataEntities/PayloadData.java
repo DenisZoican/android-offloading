@@ -4,7 +4,6 @@ import static com.example.bluetoothconnection.communication.Utils.Common.Message
 
 public class PayloadData {
     private final MessageContentType messageContentType;
-
     public PayloadData(MessageContentType messageContentType) {
         this.messageContentType = messageContentType;
     }

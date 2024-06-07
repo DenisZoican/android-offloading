@@ -15,6 +15,7 @@ import com.example.bluetoothconnection.communication.PayloadDataEntities.Payload
 import com.example.bluetoothconnection.communication.PayloadDataEntities.PayloadRequestMatData;
 import com.example.bluetoothconnection.communication.PayloadDataEntities.PayloadResponseMatData;
 import com.google.android.gms.nearby.connection.Payload;
+import com.google.gson.Gson;
 
 import static com.example.bluetoothconnection.communication.Utils.Hashing.calculateHash;
 import static com.example.bluetoothconnection.utils.Common.combineArrays;
@@ -29,11 +30,15 @@ import java.nio.ByteBuffer;
 import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.util.Arrays;
+import java.util.List;
+import java.util.Set;
 
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
 
 public class Common {
+    private final static Gson gson = new Gson();
+
     public enum MessageContentType {
         DeviceNode, ResponseImage, RequestImage, Error, UndefinedType
     }
@@ -45,6 +50,7 @@ public class Common {
     public static final int PROCESSOR_NODE_UNIQUE_NAME_LENGTH = 36; //bytes
     public static final int DESTINATION_ENDPOINT_ID_BYTES_LENGTH = 4; //bytes
     public static final int LINE_POSITION_FOR_IMAGE_PART_LENGTH = 4; //bytes
+    public static final short LIST_OF_VISITED_NODES_SIZE = 2; //bytes
 
     public static Payload createPayloadFromRequestMat(Mat image, int linePositionForImagePart, DeviceNode treeNode, PublicKey publicKey, SecretKey secretKey) throws Exception {
         // Convert enum to byte array
@@ -100,14 +106,22 @@ public class Common {
         return createPayLoadWithBytes(combinedBytes, publicKey, secretKey);
     }
 
-    public static Payload createPayloadFromDeviceNode(DeviceNode deviceNode, String destinationEndpointId) throws Exception {
+    public static Payload createPayloadFromDeviceNode(DeviceNode deviceNode, String destinationEndpointId, Set<String> visitedNodesEndpointIds) throws Exception {
+        String visitedNodesEndpointIdsString = gson.toJson(visitedNodesEndpointIds);
+        byte[] visitedNodesEndpointIdsBytes = visitedNodesEndpointIdsString.getBytes();
+
+        short visitedNodesEndpointIdsBytesLength = (short)visitedNodesEndpointIdsBytes.length;
+        byte[] listOfVisitedNodesSizeBytes = ByteBuffer.allocate(LIST_OF_VISITED_NODES_SIZE).putShort(visitedNodesEndpointIdsBytesLength).array();
+
         // Convert DeviceNode to byte array
         byte[] deviceNodeBytes = serializeObject(deviceNode);
         byte[] destinationEndpointIdBytes = destinationEndpointId.getBytes();
         
-        byte[] combinedBytes = new byte[deviceNodeBytes.length + DESTINATION_ENDPOINT_ID_BYTES_LENGTH];
+        byte[] combinedBytes = new byte[deviceNodeBytes.length + DESTINATION_ENDPOINT_ID_BYTES_LENGTH + visitedNodesEndpointIdsBytes.length + LIST_OF_VISITED_NODES_SIZE];
         System.arraycopy(destinationEndpointIdBytes, 0, combinedBytes, 0, DESTINATION_ENDPOINT_ID_BYTES_LENGTH);
-        System.arraycopy(deviceNodeBytes, 0, combinedBytes, DESTINATION_ENDPOINT_ID_BYTES_LENGTH, deviceNodeBytes.length);
+        System.arraycopy(listOfVisitedNodesSizeBytes, 0, combinedBytes, DESTINATION_ENDPOINT_ID_BYTES_LENGTH, LIST_OF_VISITED_NODES_SIZE);
+        System.arraycopy(visitedNodesEndpointIdsBytes, 0, combinedBytes, DESTINATION_ENDPOINT_ID_BYTES_LENGTH + LIST_OF_VISITED_NODES_SIZE, visitedNodesEndpointIdsBytes.length);
+        System.arraycopy(deviceNodeBytes, 0, combinedBytes, DESTINATION_ENDPOINT_ID_BYTES_LENGTH + LIST_OF_VISITED_NODES_SIZE + visitedNodesEndpointIdsBytes.length, deviceNodeBytes.length);
 
         return createPayloadWithEncryptedBytesUsingCommonKey(combinedBytes);
     }
@@ -161,17 +175,26 @@ public class Common {
         byte[] payloadBytes = Arrays.copyOfRange(payload.asBytes(), 1, payload.asBytes().length);
         byte[] decryptedBytes = decryptWithCommonKey(payloadBytes);
 
+        byte[] listOfVisitedNodesSizeBytes = new byte[LIST_OF_VISITED_NODES_SIZE];
+        System.arraycopy(decryptedBytes, DESTINATION_ENDPOINT_ID_BYTES_LENGTH, listOfVisitedNodesSizeBytes, 0, LIST_OF_VISITED_NODES_SIZE);
+        short listOfVisitedNodesLength = ByteBuffer.wrap(listOfVisitedNodesSizeBytes).getShort();
+
         byte[] destinationEndpointIdBytes =  new byte[DESTINATION_ENDPOINT_ID_BYTES_LENGTH];
-        byte[] deviceNodeBytes = new byte[decryptedBytes.length - DESTINATION_ENDPOINT_ID_BYTES_LENGTH];
+        byte[] deviceNodeBytes = new byte[decryptedBytes.length - DESTINATION_ENDPOINT_ID_BYTES_LENGTH - LIST_OF_VISITED_NODES_SIZE - listOfVisitedNodesLength];
+        byte[] visitedNodesEndpointIdsBytes = new byte[listOfVisitedNodesLength];
 
         System.arraycopy(decryptedBytes, 0, destinationEndpointIdBytes, 0, DESTINATION_ENDPOINT_ID_BYTES_LENGTH);
-        System.arraycopy(decryptedBytes, DESTINATION_ENDPOINT_ID_BYTES_LENGTH, deviceNodeBytes ,0 , deviceNodeBytes.length);
+        System.arraycopy(decryptedBytes, DESTINATION_ENDPOINT_ID_BYTES_LENGTH + LIST_OF_VISITED_NODES_SIZE, visitedNodesEndpointIdsBytes ,0 , listOfVisitedNodesLength);
+        System.arraycopy(decryptedBytes, DESTINATION_ENDPOINT_ID_BYTES_LENGTH + LIST_OF_VISITED_NODES_SIZE + listOfVisitedNodesLength, deviceNodeBytes ,0 , deviceNodeBytes.length);
 
 
         DeviceNode deviceNode = deserializeObject(deviceNodeBytes, DeviceNode.class);
         String destinationEndpointId = new String(destinationEndpointIdBytes, StandardCharsets.UTF_8);
 
-        return new PayloadDeviceNodeData(deviceNode, destinationEndpointId);
+        String jsonStringFromBytes = new String(visitedNodesEndpointIdsBytes, StandardCharsets.UTF_8);
+        Set<String> visitedNodes = gson.fromJson(jsonStringFromBytes, Set.class);
+
+        return new PayloadDeviceNodeData(deviceNode, destinationEndpointId, visitedNodes);
     }
 
     private static  byte[] getContentBytes(byte[] payloadBytes, PrivateKey privateKey) throws Exception {

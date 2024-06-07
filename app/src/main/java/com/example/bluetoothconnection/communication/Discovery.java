@@ -104,7 +104,7 @@ public class Discovery extends Device{
                 getNode().getNeighbours().remove(endpointId);
 
                 List<String> endpointsIds = new ArrayList<>(getNode().getNeighbours().keySet());
-                sendDeviceNode(endpointsIds);
+                sendDeviceNode(endpointsIds, new HashSet<>());
 
                 updateAllDevicesTextView();
             }
@@ -144,7 +144,11 @@ public class Discovery extends Device{
                         System.out.println("GRRRRRR CONNECTED");
                         List<String> foundNeighbour = new ArrayList<>();
                         foundNeighbour.add(endpointId);
-                        sendDeviceNode(foundNeighbour);
+
+                        Set<String> visitedNodes = new HashSet<>();
+                        visitedNodes.add(endpointId);
+
+                        sendDeviceNode(foundNeighbour,visitedNodes);
                     } else {
                         // We were unable to connect.
                     }
@@ -345,10 +349,16 @@ public class Discovery extends Device{
         receivedNode.getNeighbours().put(payloadDeviceNodeData.getDestinationEndpointId(), this.getNode());
         this.getNode().getNeighbours().put(endpointId, payloadDeviceNodeData.getDeviceNode());
 
-        List<String> neighboursThatNeedToBeUpdated = new ArrayList<>(getNode().getNeighbours().keySet()).stream().filter(neighbourEndpointId->{
-            return !neighbourEndpointId.equals(endpointId);
-        }).collect(Collectors.toList());
-        sendDeviceNode(neighboursThatNeedToBeUpdated);
+        Set<String> visitedNodes = payloadDeviceNodeData.getVisitedNodes();
+        visitedNodes.add(endpointId);
+
+        List<String> neighboursThatNeedToBeUpdated = new ArrayList<>(getNode().getNeighbours().keySet()).stream()
+                .filter(neighbourEndpointId-> !visitedNodes.contains(endpointId))
+                .collect(Collectors.toList());
+
+        visitedNodes.addAll(neighboursThatNeedToBeUpdated);
+
+        sendDeviceNode(neighboursThatNeedToBeUpdated, visitedNodes);
 
         updateAllDevicesTextView();
     }

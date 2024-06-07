@@ -35,8 +35,10 @@ import com.google.android.gms.nearby.connection.PayloadTransferUpdate;
 import org.opencv.core.Mat;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 public class Advertise extends Device {
@@ -88,7 +90,7 @@ public class Advertise extends Device {
                 getNode().getNeighbours().remove(endpointId);
 
                 List<String> endpointsIds = new ArrayList<>(getNode().getNeighbours().keySet());
-                sendDeviceNode(endpointsIds);
+                sendDeviceNode(endpointsIds, new HashSet<>());
 
                 updateAllDevicesTextView();
             }
@@ -118,7 +120,10 @@ public class Advertise extends Device {
                     List<String> foundNeighbour = new ArrayList<>();
                     foundNeighbour.add(endpointId);
 
-                    sendDeviceNode(foundNeighbour);
+                    Set<String> visitedNodes = new HashSet<>();
+                    visitedNodes.add(endpointId);
+
+                    sendDeviceNode(foundNeighbour, visitedNodes);
                 } else {
                     // We were unable to connect.
                 }
@@ -180,15 +185,20 @@ public class Advertise extends Device {
     }
 
     private void deviceNodeReceivedBehavior(PayloadDeviceNodeData payloadDeviceNodeData, String endpointId) {
-        System.out.println("mi-a dat pachet");
         DeviceNode receivedNode = payloadDeviceNodeData.getDeviceNode();
         receivedNode.getNeighbours().put(payloadDeviceNodeData.getDestinationEndpointId(), this.getNode());
         this.getNode().getNeighbours().put(endpointId, payloadDeviceNodeData.getDeviceNode());
 
-        List<String> neighboursThatNeedToBeUpdated = new ArrayList<>(getNode().getNeighbours().keySet()).stream().filter(neighbourEndpointId->{
-            return !neighbourEndpointId.equals(endpointId);
-        }).collect(Collectors.toList());
-        sendDeviceNode(neighboursThatNeedToBeUpdated);
+        Set<String> visitedNodes = payloadDeviceNodeData.getVisitedNodes();
+        visitedNodes.add(endpointId);
+
+        List<String> neighboursThatNeedToBeUpdated = new ArrayList<>(getNode().getNeighbours().keySet()).stream()
+                .filter(neighbourEndpointId-> !visitedNodes.contains(endpointId))
+                .collect(Collectors.toList());
+
+        visitedNodes.addAll(neighboursThatNeedToBeUpdated);
+
+        sendDeviceNode(neighboursThatNeedToBeUpdated, visitedNodes);
 
         updateAllDevicesTextView();
     }

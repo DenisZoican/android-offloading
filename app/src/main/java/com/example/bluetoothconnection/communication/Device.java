@@ -44,6 +44,7 @@ import java.security.PublicKey;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import javax.crypto.SecretKey;
 
@@ -238,69 +239,17 @@ public abstract class Device {
         connectionsClient.sendPayload(endpointId, payload);
     }
 
-    protected void sendDeviceNode(List<String> endpointIds) {
+    protected void sendDeviceNode(List<String> endpointIds, Set<String> visitedNodes) {
         /////////////should not send all neighbours, just calculate the weight and send it
         /////////////it should be enough
         DeviceNode node = getNode();
         DeviceInitialInfo deviceInitialInfo = new DeviceInitialInfo(keyPairUsedForAESSecretKEy.getPublic(),getBatteryLevel(),getCpuUsage(),getCpuCores());
-
-        /*DeviceNode copil1 = new DeviceNode();
-        DeviceNode copil2 = new DeviceNode();
-        DeviceNode copil3 = new DeviceNode();
-        DeviceNode copil1_copil1= new DeviceNode();
-        DeviceNode copil2_copil1 = new DeviceNode();
-        DeviceNode copil2_copil1_copil1 = new DeviceNode();
-
-        DeviceInitialInfo copil1_deviceInitialInfo = new DeviceInitialInfo(keyPairUsedForAESSecretKEy.getPublic(), 55, 0.73, 8);
-        DeviceInitialInfo copil2_deviceInitialInfo = new DeviceInitialInfo(keyPairUsedForAESSecretKEy.getPublic(), 27, 0.01, 8);
-        DeviceInitialInfo copil3_deviceInitialInfo = new DeviceInitialInfo(keyPairUsedForAESSecretKEy.getPublic(), 49, 0.56, 16);
-        DeviceInitialInfo copil1_copil1_deviceInitialInfo = new DeviceInitialInfo(keyPairUsedForAESSecretKEy.getPublic(), 50, 0.79, 6);
-        DeviceInitialInfo copil2_copil1_deviceInitialInfo = new DeviceInitialInfo(keyPairUsedForAESSecretKEy.getPublic(), 23, 0.88, 8);
-        DeviceInitialInfo copil2_copil1_copil1_deviceInitialInfo = new DeviceInitialInfo(keyPairUsedForAESSecretKEy.getPublic(), 98, 0.53, 8);
-
-        copil1.setDeviceInitialInfo(copil1_deviceInitialInfo);
-        copil2.setDeviceInitialInfo(copil2_deviceInitialInfo);
-        copil3.setDeviceInitialInfo(copil3_deviceInitialInfo);
-        copil1_copil1.setDeviceInitialInfo(copil1_copil1_deviceInitialInfo);
-        copil2_copil1.setDeviceInitialInfo(copil2_copil1_deviceInitialInfo);
-        copil2_copil1_copil1.setDeviceInitialInfo(copil2_copil1_copil1_deviceInitialInfo);
-
-
-        node.getNeighbours().put("1", copil1);
-        node.getNeighbours().put("2", copil2);
-        node.getNeighbours().put("3", copil3);
-        node.getNeighbours().put("211", copil2_copil1_copil1);
-
-        copil1.getNeighbours().put("11", copil1_copil1);
-        copil1.getNeighbours().put("2", copil2);
-        copil1.getNeighbours().put(getNode().getUniqueName(), node);
-
-        copil1_copil1.getNeighbours().put("1", copil1);
-        copil1_copil1.getNeighbours().put("2", copil2);
-
-
-        copil2.getNeighbours().put(getNode().getUniqueName(), node);
-        copil2.getNeighbours().put("1", copil1);
-        copil2.getNeighbours().put("11", copil1_copil1);
-        copil2.getNeighbours().put("21", copil2_copil1);
-
-        copil2_copil1.getNeighbours().put("2", copil2);
-        copil2_copil1.getNeighbours().put("211", copil2_copil1_copil1);
-
-        copil2_copil1_copil1.getNeighbours().put("21", copil2_copil1);
-        copil2_copil1_copil1.getNeighbours().put("3", copil3);
-        copil2_copil1_copil1.getNeighbours().put(getNode().getUniqueName(), node);
-
-        copil3.getNeighbours().put(getNode().getUniqueName(), node);
-        copil3.getNeighbours().put("211", copil2_copil1_copil1);*/
-
-
         node.setDeviceInitialInfo(deviceInitialInfo);
 
         endpointIds.forEach(endpointId->{
             Payload payload = null;
             try {
-                payload = createPayloadFromDeviceNode(node, endpointId);
+                payload = createPayloadFromDeviceNode(node, endpointId, visitedNodes);
             } catch (Exception e) {
                 throw new RuntimeException(e);
             }

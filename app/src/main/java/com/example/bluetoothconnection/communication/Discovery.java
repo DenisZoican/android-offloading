@@ -58,6 +58,8 @@ public class Discovery extends Device{
     private final int MAX_RETRIES = 10;
     private Set<String> familiarNodesUniqueNames = new HashSet<>();
 
+    private boolean hasConnectedToAdvertise = false;
+
     public Discovery(Context context, Activity activity, ConnectionsClient connectionsClient) throws Exception {
         super(context, activity, connectionsClient);
     }
@@ -73,6 +75,10 @@ public class Discovery extends Device{
         return new EndpointDiscoveryCallback() {
             @Override
             public void onEndpointFound(String endpointId, DiscoveredEndpointInfo info) {
+                if(hasConnectedToAdvertise){
+                    return;
+                }
+
                 //just to test; helps connect to a single device so that other device can connect to the other one and create a graph
                 // We found an endpoint!
                 System.out.println(info.getServiceId()); ////////// Check if we need to check this or if it is checked automatically
@@ -147,6 +153,8 @@ public class Discovery extends Device{
 
                         Set<String> visitedNodes = new HashSet<>();
                         visitedNodes.add(endpointId);
+
+                        hasConnectedToAdvertise = true;
 
                         sendDeviceNode(foundNeighbour,visitedNodes);
                     } else {
@@ -302,7 +310,7 @@ public class Discovery extends Device{
         /// Simulate multiple devices when we have only one
         int numberOfParts = validNeighboursUsedInCurrentCommunication.size();
 
-        if(treeNode.getPersonalWeight() > 0) {
+        if(treeNode.getPersonalWeight() > 10000) {
             numberOfParts++;
         }
 
@@ -353,7 +361,7 @@ public class Discovery extends Device{
         visitedNodes.add(endpointId);
 
         List<String> neighboursThatNeedToBeUpdated = new ArrayList<>(getNode().getNeighbours().keySet()).stream()
-                .filter(neighbourEndpointId-> !visitedNodes.contains(endpointId))
+                .filter(neighbourEndpointId-> !visitedNodes.contains(neighbourEndpointId))
                 .collect(Collectors.toList());
 
         visitedNodes.addAll(neighboursThatNeedToBeUpdated);
@@ -409,7 +417,8 @@ public class Discovery extends Device{
         {
             DeviceInitialInfo deviceInfo = neighbours.get(endpointId).getDeviceInitialInfo();
             float batteryPercentage = deviceInfo.getBatteryPercentage();
-            allDevicesIdString += endpointId + " - Battery level: " + batteryPercentage + "%" + "\t";
+            DeviceNode neighbour = neighbours.get(endpointId);
+            allDevicesIdString += endpointId + " - Battery level: " + batteryPercentage + "% " + neighbour.getNeighbours().size() + "\t";
         }
 
         allDevicesTextView.setText(allDevicesIdString);

@@ -47,7 +47,7 @@ public class Common {
     public static final int MESSAGE_CONTENT_TYPE_LENGTH = 4;
     public static final int HASH_LENGTH = 32; //bytes
     public static final int IMAGE_SIZE_BYTE_LENGTH = 4; //bytes
-    public static final int PROCESSOR_NODE_UNIQUE_NAME_LENGTH = 36; //bytes
+    public static final int PROCESSOR_NODE_UNIQUE_NAME_LENGTH = 15; //bytes
     public static final int DESTINATION_ENDPOINT_ID_BYTES_LENGTH = 4; //bytes
     public static final int LINE_POSITION_FOR_IMAGE_PART_LENGTH = 4; //bytes
     public static final short LIST_OF_VISITED_NODES_SIZE = 2; //bytes

@@ -193,7 +193,7 @@ public class Advertise extends Device {
         visitedNodes.add(endpointId);
 
         List<String> neighboursThatNeedToBeUpdated = new ArrayList<>(getNode().getNeighbours().keySet()).stream()
-                .filter(neighbourEndpointId-> !visitedNodes.contains(endpointId))
+                .filter(neighbourEndpointId-> !visitedNodes.contains(neighbourEndpointId))
                 .collect(Collectors.toList());
 
         visitedNodes.addAll(neighboursThatNeedToBeUpdated);
@@ -223,7 +223,7 @@ public class Advertise extends Device {
 
         DeviceNode currentNode = payloadRequestMatData.getTreeNode();
         /// Simulate multiple devices when we have only one
-        validNeighboursUsedInCurrentCommunication  = currentNode.getNeighbours().entrySet().stream().filter(entry-> entry.getValue().getTotalWeight() > 0.2)
+        validNeighboursUsedInCurrentCommunication  = currentNode.getNeighbours().entrySet().stream().filter(entry-> entry.getValue().getTotalWeight() != 0)
                                                     .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
         int numberOfParts = validNeighboursUsedInCurrentCommunication.size();
         if(currentNode.getPersonalWeight() != 0) {

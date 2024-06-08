@@ -330,7 +330,9 @@ public class Discovery extends Device{
                 int imagePartIndex = validNeighboursUsedInCurrentCommunication.keySet().size();
 
                 Mat partOfImageThatNeedsProcessed = partsNeededFromImage.get(imagePartIndex);
+                Toast.makeText(activity, "Processing", Toast.LENGTH_SHORT).show();
                 Mat processedMat = processImage(partOfImageThatNeedsProcessed);
+                Toast.makeText(activity, "NOT Processing", Toast.LENGTH_SHORT).show();
 
                 replacePartInImageFromGallery(matImageFromGallery, processedMat, imagePartIndex*this.getImagePartHeight());
 

@@ -2,7 +2,9 @@ package com.example.bluetoothconnection.opencv;
 
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.widget.TextView;
 
+import com.example.bluetoothconnection.R;
 import com.google.android.gms.nearby.connection.Payload;
 
 import org.opencv.android.Utils;
@@ -27,7 +29,7 @@ public class ImageProcessing {
         Imgproc.cvtColor(originalImage, grayscaleMat, Imgproc.COLOR_BGR2GRAY);
 
         try {
-            Thread.sleep(5000);
+            Thread.sleep(15000);
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
         }

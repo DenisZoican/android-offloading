@@ -1,6 +1,7 @@
 package com.example.bluetoothconnection.communication;
 
 import static com.example.bluetoothconnection.communication.Utils.Common.createPayloadFromDeviceNode;
+import static com.example.bluetoothconnection.communication.Utils.Common.createPayloadFromErrorProcessingImage;
 import static com.example.bluetoothconnection.communication.Utils.Common.extractDataFromPayload;
 import static com.example.bluetoothconnection.communication.Utils.Encrypting.checkAuthenticationToken;
 import static com.example.bluetoothconnection.communication.Utils.Encrypting.getEncryptedAuthenticationToken;
@@ -100,7 +101,8 @@ public class Advertise extends Device {
                 devicesUsedInProcessing.remove(endpointId);
 
                 if(sortedEndpointsThatAreNotUsedInProcessing.size() == 0) {
-                    if(!devicesUsedInProcessing.containsKey("Aida")) {
+                    //if(!devicesUsedInProcessing.containsKey("Aida")) {
+                    if(false) {
                         try {
                             processImagePartMyself(imagePartThatNeedsToBeProcessedIndex, requestImageBaseLinePosition);
                         } catch (Exception e) {
@@ -108,6 +110,19 @@ public class Advertise extends Device {
                         }
                     } else {
                         //trimit inapoi la discovery
+                        Mat partOfImageThatNeedsProcessed = partsNeededFromImage.get(imagePartThatNeedsToBeProcessedIndex);
+                        try {
+                            Payload errorProcessingImagePayload = createPayloadFromErrorProcessingImage(
+                                    partOfImageThatNeedsProcessed,
+                                    requestImageBaseLinePosition,
+                                    getNode().getNeighbours().get(requestInitiatorEndpointId).getDeviceInitialInfo().getPublicKey(),
+                                    AESSecretKeyUsedForMessages
+                            );
+                            connectionsClient.sendPayload(requestInitiatorEndpointId, errorProcessingImagePayload);
+                        } catch (Exception e) {
+                            throw new RuntimeException(e);
+                        }
+
                     }
                 } else {
                     String availableNodeEndpointId = sortedEndpointsThatAreNotUsedInProcessing.get(0);

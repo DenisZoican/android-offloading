@@ -12,6 +12,7 @@ import com.example.bluetoothconnection.AppConfig;
 import com.example.bluetoothconnection.communication.Entities.DeviceNode;
 import com.example.bluetoothconnection.communication.PayloadDataEntities.PayloadData;
 import com.example.bluetoothconnection.communication.PayloadDataEntities.PayloadDeviceNodeData;
+import com.example.bluetoothconnection.communication.PayloadDataEntities.PayloadErrorProcessingMat;
 import com.example.bluetoothconnection.communication.PayloadDataEntities.PayloadRequestMatData;
 import com.example.bluetoothconnection.communication.PayloadDataEntities.PayloadResponseMatData;
 import com.google.android.gms.nearby.connection.Payload;
@@ -40,7 +41,7 @@ public class Common {
     private final static Gson gson = new Gson();
 
     public enum MessageContentType {
-        DeviceNode, ResponseImage, RequestImage, Error, UndefinedType
+        DeviceNode, ResponseImage, RequestImage, Error, UndefinedType, ErrorProcessingImage
     }
     public static final String SERVICE_ID = "com.example.nearbytest";
     public static final int ENCRYPTED_SECRET_KEY_LENGTH = 256;
@@ -126,6 +127,26 @@ public class Common {
         return createPayloadWithEncryptedBytesUsingCommonKey(combinedBytes);
     }
 
+    public static Payload createPayloadFromErrorProcessingImage(Mat image, int linePosition, PublicKey publicKey, SecretKey secretKey) throws Exception {
+        // Convert enum to byte array
+        byte[] enumBytes = convertMessageContentTypeToByteArray(MessageContentType.ErrorProcessingImage.ordinal());
+
+        // Convert line position to byte array
+        byte[] linePositionForImagePartBytes =  ByteBuffer.allocate(LINE_POSITION_FOR_IMAGE_PART_LENGTH).putInt(linePosition).array();
+
+        // Convert image (Mat) to byte array
+        byte[] imageBytes = convertMatToByteArray(image);
+
+        // Combine enum and image bytes into a single byte array
+        byte[] combinedBytes = new byte[enumBytes.length + LINE_POSITION_FOR_IMAGE_PART_LENGTH + imageBytes.length];
+
+        System.arraycopy(enumBytes, 0, combinedBytes, 0, enumBytes.length);
+        System.arraycopy(linePositionForImagePartBytes, 0, combinedBytes, enumBytes.length, LINE_POSITION_FOR_IMAGE_PART_LENGTH);
+        System.arraycopy(imageBytes, 0, combinedBytes, enumBytes.length + LINE_POSITION_FOR_IMAGE_PART_LENGTH, imageBytes.length);
+
+        return createPayLoadWithBytes(combinedBytes, publicKey, secretKey);
+    }
+
     public static byte[] extractPayloadBytesWithoutHash (byte[] payloadWithHash) throws Exception {
         byte[] receivedHash = new byte[HASH_LENGTH];
         System.arraycopy(payloadWithHash, payloadWithHash.length-HASH_LENGTH, receivedHash, 0, receivedHash.length);
@@ -165,6 +186,8 @@ public class Common {
                 return extractRequestMatPayloadData(messageBytes);
             case ResponseImage:
                 return extractResponseMatPayloadData(messageBytes);
+            case ErrorProcessingImage:
+                return extractErrorProcessingImagePayloadData(messageBytes);
             default:
                 return new PayloadData(MessageContentType.UndefinedType);
         }
@@ -280,7 +303,7 @@ public class Common {
     private static PayloadResponseMatData extractResponseMatPayloadData(byte[] byteArray){
         byte[] linePositionLengthBytes = new byte[LINE_POSITION_FOR_IMAGE_PART_LENGTH];
         System.arraycopy(byteArray,0, linePositionLengthBytes, 0, LINE_POSITION_FOR_IMAGE_PART_LENGTH);
-        int linePositionLength = ByteBuffer.wrap(linePositionLengthBytes).getInt();
+        int linePosition = ByteBuffer.wrap(linePositionLengthBytes).getInt();
 
         byte[] processorUniqueNameBytes = new byte[PROCESSOR_NODE_UNIQUE_NAME_LENGTH];
         System.arraycopy(byteArray, LINE_POSITION_FOR_IMAGE_PART_LENGTH, processorUniqueNameBytes, 0, PROCESSOR_NODE_UNIQUE_NAME_LENGTH);
@@ -291,7 +314,21 @@ public class Common {
         // Convert bytes back to image
         Mat image = convertByteArrayToMat(imageBytes);
 
-        return new PayloadResponseMatData(image, new String(processorUniqueNameBytes, StandardCharsets.UTF_8), linePositionLength);
+        return new PayloadResponseMatData(image, new String(processorUniqueNameBytes, StandardCharsets.UTF_8), linePosition);
+    }
+
+    private static PayloadErrorProcessingMat extractErrorProcessingImagePayloadData(byte[] byteArray){
+        byte[] linePositionBytes = new byte[LINE_POSITION_FOR_IMAGE_PART_LENGTH];
+        System.arraycopy(byteArray,0, linePositionBytes, 0, LINE_POSITION_FOR_IMAGE_PART_LENGTH);
+        int linePosition = ByteBuffer.wrap(linePositionBytes).getInt();
+
+        int imageBytesLength = byteArray.length - LINE_POSITION_FOR_IMAGE_PART_LENGTH;
+        byte[] imageBytes = new byte[imageBytesLength];
+        System.arraycopy(byteArray, LINE_POSITION_FOR_IMAGE_PART_LENGTH, imageBytes, 0, imageBytesLength);
+        // Convert bytes back to image
+        Mat image = convertByteArrayToMat(imageBytes);
+
+        return new PayloadErrorProcessingMat(image, linePosition);
     }
 
     private static byte[] convertMessageContentTypeToByteArray(int value) {

@@ -26,6 +26,7 @@ import com.example.bluetoothconnection.communication.Extern.ExternCommunicationU
 import com.example.bluetoothconnection.communication.Extern.ExternUploadCallback;
 import com.example.bluetoothconnection.communication.PayloadDataEntities.PayloadData;
 import com.example.bluetoothconnection.communication.PayloadDataEntities.PayloadDeviceNodeData;
+import com.example.bluetoothconnection.communication.PayloadDataEntities.PayloadErrorProcessingMat;
 import com.example.bluetoothconnection.communication.PayloadDataEntities.PayloadResponseMatData;
 import com.example.bluetoothconnection.communication.Utils.Common;
 import com.google.android.gms.nearby.connection.ConnectionInfo;
@@ -183,12 +184,10 @@ public class Discovery extends Device{
                 }
             switch (payloadData.getMessageContentType()){
                 case ResponseImage:
-                    //Integer imagePartIndex = devicesUsedInCurrentCommunicationDetails.get(endpointId).getImagePart();
-                    try {
-                        responseMatReceivedBehavior((PayloadResponseMatData)payloadData, endpointId);
-                    } catch (Exception e) {
-                        throw new RuntimeException(e);
-                    }
+                    responseMatReceivedBehavior((PayloadResponseMatData)payloadData, endpointId);
+                    break;
+                case ErrorProcessingImage:
+                    errorProcessingImageReceivedBehaviour((PayloadErrorProcessingMat) payloadData);
                     break;
                 case DeviceNode:
                     deviceNodeReceivedBehavior((PayloadDeviceNodeData)payloadData, endpointId);
@@ -373,7 +372,7 @@ public class Discovery extends Device{
         updateAllDevicesTextView();
     }
 
-    private void responseMatReceivedBehavior(PayloadResponseMatData payloadResponseMatData, String endpointId) throws Exception {
+    private void responseMatReceivedBehavior(PayloadResponseMatData payloadResponseMatData, String endpointId){
         Mat receivedMat = payloadResponseMatData.getImage();
 
         replacePartInImageFromGallery(matImageFromGallery, receivedMat, payloadResponseMatData.getLinePosition());
@@ -386,6 +385,16 @@ public class Discovery extends Device{
             sendRequestImagePartToSingleEndpoint(endpointId, firstNeededPartIndex, 0);
         }*/
         familiarNodesUniqueNames.add(payloadResponseMatData.getProcessorNodeUniqueName());
+    }
+
+    private void errorProcessingImageReceivedBehaviour(PayloadErrorProcessingMat payloadErrorProcessingMat){
+        Mat partOfImageThatNeedsProcessed = payloadErrorProcessingMat.getImage();
+
+        Toast.makeText(activity, "Processing", Toast.LENGTH_SHORT).show();
+        Mat processedMat = processImage(partOfImageThatNeedsProcessed);
+        Toast.makeText(activity, "NOT Processing", Toast.LENGTH_SHORT).show();
+
+        replacePartInImageFromGallery(matImageFromGallery, processedMat, payloadErrorProcessingMat.getLinePosition());
     }
 
     /////////////// UI Elements

@@ -1,23 +1,22 @@
 package com.example.bluetoothconnection.communication;
 
-import static com.example.bluetoothconnection.communication.Utils.Common.createPayloadFromDeviceNode;
 import static com.example.bluetoothconnection.communication.Utils.Common.createPayloadFromErrorProcessingImage;
 import static com.example.bluetoothconnection.communication.Utils.Common.extractDataFromPayload;
 import static com.example.bluetoothconnection.communication.Utils.Encrypting.checkAuthenticationToken;
 import static com.example.bluetoothconnection.communication.Utils.Encrypting.getEncryptedAuthenticationToken;
 import static com.example.bluetoothconnection.opencv.ImageProcessing.convertImageToBitmap;
+import static com.example.bluetoothconnection.opencv.ImageProcessing.getImagePart;
 import static com.example.bluetoothconnection.opencv.ImageProcessing.processImage;
 
 import android.app.Activity;
 import android.content.Context;
-import android.os.Build;
 import android.widget.ImageView;
 import android.widget.TextView;
 import android.widget.Toast;
 
 import com.example.bluetoothconnection.R;
-import com.example.bluetoothconnection.communication.Entities.DeviceInitialInfo;
 import com.example.bluetoothconnection.communication.Entities.DeviceNode;
+import com.example.bluetoothconnection.communication.Entities.DeviceUsedInProcessingDetails;
 import com.example.bluetoothconnection.communication.PayloadDataEntities.PayloadData;
 import com.example.bluetoothconnection.communication.PayloadDataEntities.PayloadDeviceNodeData;
 import com.example.bluetoothconnection.communication.PayloadDataEntities.PayloadRequestMatData;
@@ -46,8 +45,8 @@ import java.util.stream.Collectors;
 public class Advertise extends Device {
 
     String requestInitiatorEndpointId;
-    Map<String, Integer> devicesUsedInProcessing;
-    int requestImageBaseLinePosition;
+
+    private int baseLinePositionForImageFromRequest = 0;
 
     public Advertise(Context context, Activity activity, ConnectionsClient connectionsClient) throws Exception {
         super(context, activity, connectionsClient);
@@ -93,28 +92,35 @@ public class Advertise extends Device {
                 //////////////////put it back, removed for when entering case PayloadTransferUpdate.Status.FAILURE//////////////////////////////////////
                 getNode().getNeighbours().remove(endpointId);
                 List<String> sortedEndpointsThatAreNotUsedInProcessing = validNeighboursUsedInCurrentCommunication.entrySet().stream()
-                            .filter(entry-> !devicesUsedInProcessing.containsKey(entry.getKey()))
-                            .sorted((previous, current)-> (int) (current.getValue().getTotalWeight() - previous.getValue().getTotalWeight()))
-                            .map(entry->entry.getKey()).collect(Collectors.toList());
+                        .filter(entry-> !devicesUsedInProcessing.containsKey(entry.getKey()))
+                        .sorted((previous, current)-> (int) (current.getValue().getTotalWeight() - previous.getValue().getTotalWeight()))
+                        .map(entry->entry.getKey()).collect(Collectors.toList());
 
-                int imagePartThatNeedsToBeProcessedIndex = devicesUsedInProcessing.get(endpointId);
+                DeviceUsedInProcessingDetails neighbourLostDetails = devicesUsedInProcessing.get(endpointId);
                 devicesUsedInProcessing.remove(endpointId);
 
                 if(sortedEndpointsThatAreNotUsedInProcessing.size() == 0) {
                     //if(!devicesUsedInProcessing.containsKey("Aida")) {
                     if(false) {
                         try {
-                            processImagePartMyself(imagePartThatNeedsToBeProcessedIndex, requestImageBaseLinePosition);
+                            processImagePartMyself(
+                                    neighbourLostDetails.getHeightOfImagePart(),
+                                    neighbourLostDetails.getLinePositionOfImagePart()
+                            ); //// Change this
                         } catch (Exception e) {
                             throw new RuntimeException(e);
                         }
                     } else {
                         //trimit inapoi la discovery
-                        Mat partOfImageThatNeedsProcessed = partsNeededFromImage.get(imagePartThatNeedsToBeProcessedIndex);
+                        Mat partOfImageThatNeedsProcessed = getImagePart(
+                                imageThatNeedsToBeProcessed,
+                                neighbourLostDetails.getLinePositionOfImagePart(),
+                                neighbourLostDetails.getHeightNeededToBeProcessed()
+                        );
                         try {
                             Payload errorProcessingImagePayload = createPayloadFromErrorProcessingImage(
                                     partOfImageThatNeedsProcessed,
-                                    requestImageBaseLinePosition,
+                                    neighbourLostDetails.getLinePositionOfImagePart(),
                                     getNode().getNeighbours().get(requestInitiatorEndpointId).getDeviceInitialInfo().getPublicKey(),
                                     AESSecretKeyUsedForMessages
                             );
@@ -128,7 +134,7 @@ public class Advertise extends Device {
                     String availableNodeEndpointId = sortedEndpointsThatAreNotUsedInProcessing.get(0);
                     //si trimit la availableNodeEndpointId
                 }
-                
+
                 List<String> endpointsIds = new ArrayList<>(getNode().getNeighbours().keySet());
                 sendDeviceNode(endpointsIds, new HashSet<>());
 
@@ -244,7 +250,14 @@ public class Advertise extends Device {
     }
 
     private void responseMatReceivedBehavior(PayloadResponseMatData payloadResponseMatData, String endpointId) {
-        devicesUsedInProcessing.remove(endpointId);
+        DeviceUsedInProcessingDetails deviceUsedInProcessingDetails = devicesUsedInProcessing.get(endpointId);
+        int remainedHeightToBeProcessed = deviceUsedInProcessingDetails.getHeightNeededToBeProcessed() - payloadResponseMatData.getImage().height();
+        deviceUsedInProcessingDetails.setHeightNeededToBeProcessed(remainedHeightToBeProcessed);
+
+        if (remainedHeightToBeProcessed == 0) {
+            devicesUsedInProcessing.remove(endpointId);
+        }
+
         try {
             sendResponseImagePartToSingleEndpoint(
                     requestInitiatorEndpointId,
@@ -259,9 +272,8 @@ public class Advertise extends Device {
 
     private void requestMatReceivedBehavior(PayloadRequestMatData payloadRequestMatData, String endpointId) throws Exception {
         this.requestInitiatorEndpointId = endpointId;
-        this.requestImageBaseLinePosition = payloadRequestMatData.getLinePosition();
 
-        Mat receivedMat = payloadRequestMatData.getImage();
+        this.imageThatNeedsToBeProcessed = payloadRequestMatData.getImage();
 
         DeviceNode currentNode = payloadRequestMatData.getTreeNode();
         /// Simulate multiple devices when we have only one
@@ -269,41 +281,56 @@ public class Advertise extends Device {
                                                     .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
         devicesUsedInProcessing = new HashMap();
 
-        int numberOfParts = validNeighboursUsedInCurrentCommunication.size();
-        if(currentNode.getPersonalWeight() != 0) {
-            numberOfParts++;
-        }
-        initializeImageValues(receivedMat, numberOfParts);
+        double totalValidNodesWeight = validNeighboursUsedInCurrentCommunication.values().stream()
+                .map(DeviceNode::getTotalWeight)
+                .reduce(0.0, Double::sum);
 
-        // Send image to another device
-        int index = 0;
+        double personalWeight = currentNode.getPersonalWeight();
+        if(personalWeight > 0){
+            totalValidNodesWeight += personalWeight;
+        }
+
+        baseLinePositionForImageFromRequest = payloadRequestMatData.getLinePosition();
+
+        int linePosition = 0;
+        int imageHeight = imageThatNeedsToBeProcessed.height();
+
         for (String neighbourEndpointId : validNeighboursUsedInCurrentCommunication.keySet()) {
-            try {
-                sendRequestImagePartToSingleEndpoint(neighbourEndpointId, index, payloadRequestMatData.getLinePosition());
-                devicesUsedInProcessing.put(neighbourEndpointId, index);
-            } catch (Exception e) {
-                throw new RuntimeException(e);
-            }
-            index ++;
+            double neighbourTotalWeight = validNeighboursUsedInCurrentCommunication.get(neighbourEndpointId).getTotalWeight();
+            double percentageOfImageToBeProcessed = neighbourTotalWeight * 100 / totalValidNodesWeight;
+
+            int heightOfImagePartThatNeedsToBeProcessed = (int) (percentageOfImageToBeProcessed * imageHeight / 100);
+
+            DeviceUsedInProcessingDetails deviceUsedInProcessingDetails = new DeviceUsedInProcessingDetails(heightOfImagePartThatNeedsToBeProcessed,linePosition);
+            this.devicesUsedInProcessing.put(neighbourEndpointId, deviceUsedInProcessingDetails);
+
+            sendRequestImageToSingleEndpoint(neighbourEndpointId, heightOfImagePartThatNeedsToBeProcessed, linePosition + baseLinePositionForImageFromRequest);
+
+            linePosition += heightOfImagePartThatNeedsToBeProcessed;
         }
 
-        if(validNeighboursUsedInCurrentCommunication.keySet().size() < numberOfParts ) { //&& !Build.MODEL.equals("SM-G991B")){
-            int imagePartIndex = validNeighboursUsedInCurrentCommunication.keySet().size();
-            processImagePartMyself(imagePartIndex, payloadRequestMatData.getLinePosition());
+        if(linePosition < imageHeight){
+            int heightOfImagePart = imageHeight - linePosition;
+
+            processImagePartMyself(heightOfImagePart, linePosition);
         }
     }
-    private void processImagePartMyself(int imagePartIndex, int baseLinePosition) throws Exception {
-        devicesUsedInProcessing.put("Aida", imagePartIndex);
-        Mat partOfImageThatNeedsProcessed = partsNeededFromImage.get(imagePartIndex);
+    private void processImagePartMyself(int imagePartHeight, int imagePartLinePosition) throws Exception {
+        DeviceUsedInProcessingDetails deviceUsedInProcessingDetails = new DeviceUsedInProcessingDetails(imagePartHeight,imagePartLinePosition);
+        this.devicesUsedInProcessing.put("Aida", deviceUsedInProcessingDetails);
+
+        Mat partOfImageThatNeedsProcessed = getImagePart(imageThatNeedsToBeProcessed,imagePartLinePosition, imagePartHeight);
 
         Toast.makeText(activity, "Processing", Toast.LENGTH_SHORT).show();
-        Mat processedMat = processImage(partOfImageThatNeedsProcessed);
+        Mat processedMat = processImage(partOfImageThatNeedsProcessed,3000);
         Toast.makeText(activity, "NOT Processing", Toast.LENGTH_SHORT).show();
+
         //partsNeededFromImage.remove(imagePartIndex);
-        int imageLinePartPosition = baseLinePosition + imagePartIndex*this.getImagePartHeight();
-        sendResponseImagePartToSingleEndpoint(requestInitiatorEndpointId, processedMat, imageLinePartPosition, getNode().getUniqueName());
+        sendResponseImagePartToSingleEndpoint(requestInitiatorEndpointId, processedMat, imagePartLinePosition + baseLinePositionForImageFromRequest, getNode().getUniqueName());
+
         ImageView imageView = activity.findViewById(R.id.imageView);
         imageView.setImageBitmap(convertImageToBitmap(processedMat));
+
         devicesUsedInProcessing.remove("Aida");
     }
     ////// UI stuff

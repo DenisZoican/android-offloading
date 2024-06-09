@@ -8,6 +8,7 @@ import static com.example.bluetoothconnection.communication.Utils.Encrypting.gen
 import static com.example.bluetoothconnection.communication.Utils.Encrypting.generateRSAKeyPair;
 import static com.example.bluetoothconnection.communication.Utils.Encrypting.getEncryptedAuthenticationToken;
 import static com.example.bluetoothconnection.opencv.ImageProcessing.convertImageToBitmap;
+import static com.example.bluetoothconnection.opencv.ImageProcessing.getImagePart;
 import static com.example.bluetoothconnection.opencv.ImageProcessing.replaceMat;
 
 import android.app.Activity;
@@ -20,6 +21,7 @@ import android.widget.Toast;
 import com.example.bluetoothconnection.R;
 import com.example.bluetoothconnection.communication.Entities.CommunicationDetails;
 import com.example.bluetoothconnection.communication.Entities.DeviceInitialInfo;
+import com.example.bluetoothconnection.communication.Entities.DeviceUsedInProcessingDetails;
 import com.example.bluetoothconnection.opencv.ImageProcessing;
 import com.google.android.gms.nearby.connection.AdvertisingOptions;
 import com.google.android.gms.nearby.connection.ConnectionLifecycleCallback;
@@ -49,6 +51,8 @@ import java.util.Set;
 import javax.crypto.SecretKey;
 
 public abstract class Device {
+
+    protected Mat imageThatNeedsToBeProcessed;
     // Key pair for signing and verifying messages
     protected final KeyPair keyPairUsedForAESSecretKEy;
     protected final SecretKey AESSecretKeyUsedForMessages;
@@ -56,15 +60,15 @@ public abstract class Device {
     protected final ConnectionsClient connectionsClient;
     public Context context;
 
-    protected Map<String, CommunicationDetails> devicesUsedInCurrentCommunicationDetails;
-    protected Map<Integer, Mat> partsNeededFromImage;
+    // protected Map<String, CommunicationDetails> devicesUsedInCurrentCommunicationDetails;
 
     private float batteryLevel;
     private double cpuUsage;
     private int cpuCores;
     private DeviceNode node;
-    Map<String, DeviceNode> validNeighboursUsedInCurrentCommunication;
-    private int imagePartHeight;
+    protected Map<String, DeviceNode> validNeighboursUsedInCurrentCommunication;
+
+    protected Map<String, DeviceUsedInProcessingDetails> devicesUsedInProcessing = new HashMap<>();
 
     public Device(Context context, Activity activity, ConnectionsClient connectionsClient) throws Exception {
         this.activity = activity;
@@ -94,10 +98,6 @@ public abstract class Device {
     }
     public DeviceNode getNode() {
         return node;
-    }
-
-    public int getImagePartHeight() {
-        return imagePartHeight;
     }
 
     abstract public void start() throws Exception;
@@ -200,20 +200,9 @@ public abstract class Device {
         }
         return cpuUsage;
     }
-    protected void initializeImageValues(Mat image, int numberOfParts){
-        List<Mat> divideImages = ImageProcessing.divideImages(image,numberOfParts);
-        this.partsNeededFromImage =  new HashMap<>();
-        for(int i=0;i<numberOfParts;i++){
-            this.partsNeededFromImage.put(i,divideImages.get(i));
-        }
-
-        this.imagePartHeight = image.height()/numberOfParts;
-
-        this.devicesUsedInCurrentCommunicationDetails = new HashMap<>();
-    }
 
     ///////////// Send message only if we have public key. Add a check
-    protected void sendRequestImagePartToSingleEndpoint(String endpointId, int imagePart, int baseLinePosition) throws Exception {
+    protected void sendRequestImageToSingleEndpoint(String endpointId, int imagePartHeight, int imagePartLinePosition) throws Exception {
         ///////////// Send message only if we have public key. Add a check
         /*if(devicesUsedInCurrentCommunicationDetails.containsKey(endpointId)) {
             CommunicationDetails communicationDetails = devicesUsedInCurrentCommunicationDetails.get(endpointId);
@@ -227,8 +216,10 @@ public abstract class Device {
         PublicKey endpointPublicKey = this.getNode().getNeighbours().get(endpointId).getDeviceInitialInfo().getPublicKey();
 
         DeviceNode neighbourTreeNode = validNeighboursUsedInCurrentCommunication.get(endpointId);
-        int linePositionForImagePart = baseLinePosition + imagePartHeight*imagePart;
-        Payload payload = createPayloadFromRequestMat(partsNeededFromImage.get(imagePart), linePositionForImagePart, neighbourTreeNode, endpointPublicKey, AESSecretKeyUsedForMessages);
+
+        Mat imagePart = getImagePart(imageThatNeedsToBeProcessed, imagePartLinePosition, imagePartHeight);
+
+        Payload payload = createPayloadFromRequestMat(imagePart, imagePartLinePosition, neighbourTreeNode, endpointPublicKey, AESSecretKeyUsedForMessages);
         connectionsClient.sendPayload(endpointId, payload);
     }
 

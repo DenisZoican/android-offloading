@@ -1,15 +1,13 @@
 package com.example.bluetoothconnection.communication;
 
-import static com.example.bluetoothconnection.communication.Utils.Common.createPayloadFromDeviceNode;
 import static com.example.bluetoothconnection.communication.Utils.Common.extractDataFromPayload;
 import static com.example.bluetoothconnection.communication.Utils.Encrypting.checkAuthenticationToken;
 import static com.example.bluetoothconnection.communication.Utils.Encrypting.getEncryptedAuthenticationToken;
-import static com.example.bluetoothconnection.opencv.ImageProcessing.convertImageToBitmap;
+import static com.example.bluetoothconnection.opencv.ImageProcessing.getImagePart;
 import static com.example.bluetoothconnection.opencv.ImageProcessing.processImage;
 
 import android.app.Activity;
 import android.content.Context;
-import android.graphics.Bitmap;
 import android.view.View;
 import android.widget.Button;
 import android.widget.ImageView;
@@ -19,9 +17,9 @@ import android.widget.Toast;
 import androidx.annotation.NonNull;
 
 import com.example.bluetoothconnection.R;
-import com.example.bluetoothconnection.communication.Entities.CommunicationDetails;
 import com.example.bluetoothconnection.communication.Entities.DeviceInitialInfo;
 import com.example.bluetoothconnection.communication.Entities.DeviceNode;
+import com.example.bluetoothconnection.communication.Entities.DeviceUsedInProcessingDetails;
 import com.example.bluetoothconnection.communication.Extern.ExternCommunicationUtils;
 import com.example.bluetoothconnection.communication.Extern.ExternUploadCallback;
 import com.example.bluetoothconnection.communication.PayloadDataEntities.PayloadData;
@@ -45,6 +43,7 @@ import org.opencv.core.Size;
 import org.opencv.imgproc.Imgproc;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
@@ -54,7 +53,6 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 public class Discovery extends Device{
-    private Mat matImageFromGallery;
     private static final int NEIGHBOUR_TRANSPORT_PENALTY = 1; // s/ms
     private final int MAX_RETRIES = 10;
     private Set<String> familiarNodesUniqueNames = new HashSet<>();
@@ -76,9 +74,9 @@ public class Discovery extends Device{
         return new EndpointDiscoveryCallback() {
             @Override
             public void onEndpointFound(String endpointId, DiscoveredEndpointInfo info) {
-                if(hasConnectedToAdvertise){
+                /*if(hasConnectedToAdvertise){
                     return;
-                }
+                }*/
 
                 //just to test; helps connect to a single device so that other device can connect to the other one and create a graph
                 // We found an endpoint!
@@ -109,6 +107,20 @@ public class Discovery extends Device{
                 //////// !!!!!!!!!! verify if it throws exception when list doesn't contain endpointId !!!!!!!!!!!
                 //////////////////put it back, removed for when entering case PayloadTransferUpdate.Status.FAILURE//////////////////////////////////////
                 getNode().getNeighbours().remove(endpointId);
+                List<String> sortedEndpointsThatAreNotUsedInProcessing = validNeighboursUsedInCurrentCommunication.entrySet().stream()
+                        .filter(entry-> !devicesUsedInProcessing.containsKey(entry.getKey()))
+                        .sorted((previous, current)-> (int) (current.getValue().getTotalWeight() - previous.getValue().getTotalWeight()))
+                        .map(entry->entry.getKey()).collect(Collectors.toList());
+
+                DeviceUsedInProcessingDetails neighbourLostDetails = devicesUsedInProcessing.get(endpointId);
+                devicesUsedInProcessing.remove(endpointId);
+
+                if(sortedEndpointsThatAreNotUsedInProcessing.size() == 0) {
+                    processImagePartMyself(neighbourLostDetails.getHeightOfImagePart(), neighbourLostDetails.getLinePositionOfImagePart());
+                } else {
+                    String availableNodeEndpointId = sortedEndpointsThatAreNotUsedInProcessing.get(0);
+                    //si trimit la availableNodeEndpointId
+                }
 
                 List<String> endpointsIds = new ArrayList<>(getNode().getNeighbours().keySet());
                 sendDeviceNode(endpointsIds, new HashSet<>());
@@ -242,7 +254,7 @@ public class Discovery extends Device{
         Imgproc.resize(matImageFromGallery, resizedMat, new Size(500, 500), 0, 0, Imgproc.INTER_LINEAR);
         /////////////// MUST RESIZE. FIND MAX SIZE FOR PAYLOAD
 
-        this.matImageFromGallery = resizedMat;
+        this.imageThatNeedsToBeProcessed = resizedMat;
     }
 
     private DeviceNode convertGraphToTree(DeviceNode root, Set<String> visitedNodes) {
@@ -300,49 +312,57 @@ public class Discovery extends Device{
             DeviceInitialInfo deviceInitialInfo = new DeviceInitialInfo(keyPairUsedForAESSecretKEy.getPublic(),getBatteryLevel(),getCpuUsage(),getCpuCores());
             getNode().setDeviceInitialInfo(deviceInitialInfo);
         }
+
         Set<String> visitedNodes = new HashSet<>();
         DeviceNode treeNode = convertGraphToTree(getNode(), visitedNodes);
         setNodesWeight(treeNode);
+
         validNeighboursUsedInCurrentCommunication  = treeNode.getNeighbours().entrySet().stream().filter(entry-> entry.getValue().getTotalWeight() > 0.5)
                                                     .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+        devicesUsedInProcessing = new HashMap();
 
-        /// Simulate multiple devices when we have only one
-        int numberOfParts = validNeighboursUsedInCurrentCommunication.size();
+        double totalValidNodesWeight = validNeighboursUsedInCurrentCommunication.values().stream()
+                .map(DeviceNode::getTotalWeight)
+                .reduce(0.0, Double::sum);
 
-        if(treeNode.getPersonalWeight() > 10000) {
-            numberOfParts++;
+        double personalWeight = treeNode.getPersonalWeight();
+        if(personalWeight != 0){
+            totalValidNodesWeight += personalWeight;
         }
 
-        if (numberOfParts > 0) {
-            initializeImageValues(matImageFromGallery, numberOfParts);
-            int index = 0;
-            for (String endpointId : validNeighboursUsedInCurrentCommunication.keySet()) {
+        if(totalValidNodesWeight > 0){
+            int linePosition = 0;
+            int imageHeight = imageThatNeedsToBeProcessed.height();
+
+            for (String neighbourEndpointId : validNeighboursUsedInCurrentCommunication.keySet()) {
+                double neighbourTotalWeight = validNeighboursUsedInCurrentCommunication.get(neighbourEndpointId).getTotalWeight();
+                double percentageOfImageToBeProcessed = neighbourTotalWeight * 100 / totalValidNodesWeight;
+
+                int heightOfImagePartThatNeedsToBeProcessed = (int) (percentageOfImageToBeProcessed * imageHeight / 100);
+
+                DeviceUsedInProcessingDetails deviceUsedInProcessingDetails = new DeviceUsedInProcessingDetails(heightOfImagePartThatNeedsToBeProcessed,linePosition);
+                this.devicesUsedInProcessing.put(neighbourEndpointId, deviceUsedInProcessingDetails);
+
                 try {
-                    sendRequestImagePartToSingleEndpoint(endpointId, index, 0);
+                    sendRequestImageToSingleEndpoint(neighbourEndpointId, heightOfImagePartThatNeedsToBeProcessed, linePosition);
                 } catch (Exception e) {
                     throw new RuntimeException(e);
                 }
-                index ++;
+
+                linePosition+=heightOfImagePartThatNeedsToBeProcessed;
             }
 
-            if(validNeighboursUsedInCurrentCommunication.keySet().size() < numberOfParts){
-                int imagePartIndex = validNeighboursUsedInCurrentCommunication.keySet().size();
+            if(linePosition < imageHeight){
+                int heightOfImagePart = imageHeight - linePosition;
 
-                Mat partOfImageThatNeedsProcessed = partsNeededFromImage.get(imagePartIndex);
-                Toast.makeText(activity, "Processing", Toast.LENGTH_SHORT).show();
-                Mat processedMat = processImage(partOfImageThatNeedsProcessed);
-                Toast.makeText(activity, "NOT Processing", Toast.LENGTH_SHORT).show();
-
-                replacePartInImageFromGallery(matImageFromGallery, processedMat, imagePartIndex*this.getImagePartHeight());
-
-                //partsNeededFromImage.remove(imagePartIndex);
+                processImagePartMyself(heightOfImagePart, linePosition);
             }
         } else {
-            ExternCommunicationUtils.uploadMat(matImageFromGallery, true, new ExternUploadCallback() {
+            ExternCommunicationUtils.uploadMat(imageThatNeedsToBeProcessed, true, new ExternUploadCallback() {
                 @Override
                 public void onSuccess(Mat processedMat) {
                     // Handle the processed Mat (e.g., display it in an ImageView)
-                    replacePartInImageFromGallery(matImageFromGallery, processedMat, 0);
+                    replacePartInImageFromGallery(imageThatNeedsToBeProcessed, processedMat, 0);
                 }
                 @Override
                 public void onFailure(String errorMessage) {
@@ -351,6 +371,15 @@ public class Discovery extends Device{
                 }
             });
         }
+    }
+
+    private void processImagePartMyself(int imagePartHeight, int imagePartLinePosition) {
+        Mat partOfImageThatNeedsProcessed = getImagePart(imageThatNeedsToBeProcessed, imagePartLinePosition, imagePartHeight);
+        Toast.makeText(activity, "Processing", Toast.LENGTH_SHORT).show();
+        Mat processedMat = processImage(partOfImageThatNeedsProcessed, 10000);
+        Toast.makeText(activity, "NOT Processing", Toast.LENGTH_SHORT).show();
+
+        replacePartInImageFromGallery(imageThatNeedsToBeProcessed, processedMat, imagePartLinePosition);
     }
 
     private void deviceNodeReceivedBehavior(PayloadDeviceNodeData payloadDeviceNodeData, String endpointId) {
@@ -375,9 +404,9 @@ public class Discovery extends Device{
     private void responseMatReceivedBehavior(PayloadResponseMatData payloadResponseMatData, String endpointId){
         Mat receivedMat = payloadResponseMatData.getImage();
 
-        replacePartInImageFromGallery(matImageFromGallery, receivedMat, payloadResponseMatData.getLinePosition());
+        replacePartInImageFromGallery(imageThatNeedsToBeProcessed, receivedMat, payloadResponseMatData.getLinePosition());
 
-        devicesUsedInCurrentCommunicationDetails.remove(endpointId); ///// This may be a problem. IF we remove an id from different threads, we may have inconsticency.
+        //devicesUsedInCurrentCommunicationDetails.remove(endpointId); ///// This may be a problem. IF we remove an id from different threads, we may have inconsticency.
         //partsNeededFromImage.remove(imagePartIndex);
 
         /*if (!partsNeededFromImage.isEmpty()) {
@@ -391,10 +420,10 @@ public class Discovery extends Device{
         Mat partOfImageThatNeedsProcessed = payloadErrorProcessingMat.getImage();
 
         Toast.makeText(activity, "Processing", Toast.LENGTH_SHORT).show();
-        Mat processedMat = processImage(partOfImageThatNeedsProcessed);
+        Mat processedMat = processImage(partOfImageThatNeedsProcessed, 10000);
         Toast.makeText(activity, "NOT Processing", Toast.LENGTH_SHORT).show();
 
-        replacePartInImageFromGallery(matImageFromGallery, processedMat, payloadErrorProcessingMat.getLinePosition());
+        replacePartInImageFromGallery(imageThatNeedsToBeProcessed, processedMat, payloadErrorProcessingMat.getLinePosition());
     }
 
     /////////////// UI Elements

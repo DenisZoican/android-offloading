@@ -12,6 +12,7 @@ import org.opencv.core.CvType;
 import org.opencv.core.Mat;
 import org.opencv.core.MatOfByte;
 import org.opencv.core.Range;
+import org.opencv.core.Rect;
 import org.opencv.core.Size;
 import org.opencv.imgcodecs.Imgcodecs;
 import org.opencv.imgproc.Imgproc;
@@ -22,14 +23,19 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class ImageProcessing {
-    public static Mat processImage(Mat originalImage){
+    public  static Mat getImagePart(Mat image, int linePosition, int imagePartHeight){
+        Rect roi = new Rect(0, linePosition, image.width(), imagePartHeight);
+        return image.submat(roi);
+    }
+
+    public static Mat processImage(Mat originalImage, int delay){
         // Perform image processing operations using OpenCV on the imageMat
         // Convert the image to grayscale
         Mat grayscaleMat = new Mat();
         Imgproc.cvtColor(originalImage, grayscaleMat, Imgproc.COLOR_BGR2GRAY);
 
         try {
-            Thread.sleep(15000);
+            Thread.sleep(delay);
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
         }

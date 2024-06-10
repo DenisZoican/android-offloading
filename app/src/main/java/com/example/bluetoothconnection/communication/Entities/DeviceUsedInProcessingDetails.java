@@ -1,5 +1,6 @@
 package com.example.bluetoothconnection.communication.Entities;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -9,6 +10,7 @@ public class DeviceUsedInProcessingDetails {
     private final int heightOfImagePart;
 
     private final int linePositionOfImagePart;
+    private LocalDateTime lastHeartbeatReceivedTimestamp;
 
     private List<ImagePartInterval> imagePartIntervals = new ArrayList<>();
 
@@ -36,5 +38,12 @@ public class DeviceUsedInProcessingDetails {
 
     public int getLinePositionOfImagePart() {
         return linePositionOfImagePart;
+    }
+    public void setLastHeartbeatReceivedTimestamp(LocalDateTime  lastHeartbeatReceivedTimestamp) {
+        this.lastHeartbeatReceivedTimestamp = lastHeartbeatReceivedTimestamp;
+    }
+
+    public LocalDateTime getLastHeartbeatReceivedTimestamp() {
+        return lastHeartbeatReceivedTimestamp;
     }
 }

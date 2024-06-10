@@ -106,26 +106,7 @@ public class Discovery extends Device{
                 // We lost an endpoint.
                 //////// !!!!!!!!!! verify if it throws exception when list doesn't contain endpointId !!!!!!!!!!!
                 //////////////////put it back, removed for when entering case PayloadTransferUpdate.Status.FAILURE//////////////////////////////////////
-                getNode().getNeighbours().remove(endpointId);
-                List<String> sortedEndpointsThatAreNotUsedInProcessing = validNeighboursUsedInCurrentCommunication.entrySet().stream()
-                        .filter(entry-> !devicesUsedInProcessing.containsKey(entry.getKey()))
-                        .sorted((previous, current)-> (int) (current.getValue().getTotalWeight() - previous.getValue().getTotalWeight()))
-                        .map(entry->entry.getKey()).collect(Collectors.toList());
-
-                DeviceUsedInProcessingDetails neighbourLostDetails = devicesUsedInProcessing.get(endpointId);
-                devicesUsedInProcessing.remove(endpointId);
-
-                if(sortedEndpointsThatAreNotUsedInProcessing.size() == 0) {
-                    processImagePartMyself(neighbourLostDetails.getHeightOfImagePart(), neighbourLostDetails.getLinePositionOfImagePart());
-                } else {
-                    String availableNodeEndpointId = sortedEndpointsThatAreNotUsedInProcessing.get(0);
-                    //si trimit la availableNodeEndpointId
-                }
-
-                List<String> endpointsIds = new ArrayList<>(getNode().getNeighbours().keySet());
-                sendDeviceNode(endpointsIds, new HashSet<>());
-
-                updateAllDevicesTextView();
+                onEndpointLostBehaviour(endpointId);
             }
         };
     }
@@ -203,6 +184,9 @@ public class Discovery extends Device{
                     break;
                 case DeviceNode:
                     deviceNodeReceivedBehavior((PayloadDeviceNodeData)payloadData, endpointId);
+                    break;
+                case Heartbeat:
+                    heartbeatReceivedBehaviour(endpointId);
                     break;
                 case Error:
                     Toast.makeText(activity, "Hash didn't match", Toast.LENGTH_SHORT).show();
@@ -357,6 +341,7 @@ public class Discovery extends Device{
 
                 processImagePartMyself(heightOfImagePart, linePosition);
             }
+            verifyHeartbeatTimestamps();
         } else {
             ExternCommunicationUtils.uploadMat(imageThatNeedsToBeProcessed, true, new ExternUploadCallback() {
                 @Override
@@ -374,12 +359,21 @@ public class Discovery extends Device{
     }
 
     private void processImagePartMyself(int imagePartHeight, int imagePartLinePosition) {
+        DeviceUsedInProcessingDetails deviceUsedInProcessingDetails = new DeviceUsedInProcessingDetails(imagePartHeight,imagePartLinePosition);
+        this.devicesUsedInProcessing.put("Aida", deviceUsedInProcessingDetails);
+
         Mat partOfImageThatNeedsProcessed = getImagePart(imageThatNeedsToBeProcessed, imagePartLinePosition, imagePartHeight);
         Toast.makeText(activity, "Processing", Toast.LENGTH_SHORT).show();
         Mat processedMat = processImage(partOfImageThatNeedsProcessed, 10000);
         Toast.makeText(activity, "NOT Processing", Toast.LENGTH_SHORT).show();
 
         replacePartInImageFromGallery(imageThatNeedsToBeProcessed, processedMat, imagePartLinePosition);
+
+        devicesUsedInProcessing.remove("Aida");
+
+        if (devicesUsedInProcessing.size() == 0) {
+            verifyHeartbeatTimestamp.cancel();
+        }
     }
 
     private void deviceNodeReceivedBehavior(PayloadDeviceNodeData payloadDeviceNodeData, String endpointId) {
@@ -402,6 +396,18 @@ public class Discovery extends Device{
     }
 
     private void responseMatReceivedBehavior(PayloadResponseMatData payloadResponseMatData, String endpointId){
+        DeviceUsedInProcessingDetails deviceUsedInProcessingDetails = devicesUsedInProcessing.get(endpointId);
+        int remainedHeightToBeProcessed = deviceUsedInProcessingDetails.getHeightNeededToBeProcessed() - payloadResponseMatData.getImage().height();
+        deviceUsedInProcessingDetails.setHeightNeededToBeProcessed(remainedHeightToBeProcessed);
+
+        if (remainedHeightToBeProcessed == 0) {
+            devicesUsedInProcessing.remove(endpointId);
+
+            if (devicesUsedInProcessing.size() == 0) {
+                verifyHeartbeatTimestamp.cancel();
+            }
+        }
+
         Mat receivedMat = payloadResponseMatData.getImage();
 
         replacePartInImageFromGallery(imageThatNeedsToBeProcessed, receivedMat, payloadResponseMatData.getLinePosition());
@@ -446,6 +452,32 @@ public class Discovery extends Device{
                 }
             }
         });
+    }
+    protected void onEndpointLostBehaviour(String endpointId) {
+        getNode().getNeighbours().remove(endpointId);
+        List<String> sortedEndpointsThatAreNotUsedInProcessing = validNeighboursUsedInCurrentCommunication.entrySet().stream()
+                .filter(entry-> !devicesUsedInProcessing.containsKey(entry.getKey()))
+                .sorted((previous, current)-> (int) (current.getValue().getTotalWeight() - previous.getValue().getTotalWeight()))
+                .map(entry->entry.getKey()).collect(Collectors.toList());
+
+        DeviceUsedInProcessingDetails neighbourLostDetails = devicesUsedInProcessing.get(endpointId);
+        devicesUsedInProcessing.remove(endpointId);
+
+        if(sortedEndpointsThatAreNotUsedInProcessing.size() == 0) {
+            processImagePartMyself(neighbourLostDetails.getHeightOfImagePart(), neighbourLostDetails.getLinePositionOfImagePart());
+        } else {
+            String availableNodeEndpointId = sortedEndpointsThatAreNotUsedInProcessing.get(0);
+            //si trimit la availableNodeEndpointId
+        }
+
+        if (devicesUsedInProcessing.size() == 0) {
+            verifyHeartbeatTimestamp.cancel();
+        }
+
+        List<String> endpointsIds = new ArrayList<>(getNode().getNeighbours().keySet());
+        sendDeviceNode(endpointsIds, new HashSet<>());
+
+        updateAllDevicesTextView();
     }
 
     private void updateAllDevicesTextView(){

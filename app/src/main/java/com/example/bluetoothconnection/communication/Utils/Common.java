@@ -13,6 +13,7 @@ import com.example.bluetoothconnection.communication.Entities.DeviceNode;
 import com.example.bluetoothconnection.communication.PayloadDataEntities.PayloadData;
 import com.example.bluetoothconnection.communication.PayloadDataEntities.PayloadDeviceNodeData;
 import com.example.bluetoothconnection.communication.PayloadDataEntities.PayloadErrorProcessingMat;
+import com.example.bluetoothconnection.communication.PayloadDataEntities.PayloadHeartbeatData;
 import com.example.bluetoothconnection.communication.PayloadDataEntities.PayloadRequestMatData;
 import com.example.bluetoothconnection.communication.PayloadDataEntities.PayloadResponseMatData;
 import com.google.android.gms.nearby.connection.Payload;
@@ -41,7 +42,7 @@ public class Common {
     private final static Gson gson = new Gson();
 
     public enum MessageContentType {
-        DeviceNode, ResponseImage, RequestImage, Error, UndefinedType, ErrorProcessingImage
+        DeviceNode, ResponseImage, RequestImage, Error, UndefinedType, ErrorProcessingImage, Heartbeat
     }
     public static final String SERVICE_ID = "com.example.nearbytest";
     public static final int ENCRYPTED_SECRET_KEY_LENGTH = 256;
@@ -127,6 +128,13 @@ public class Common {
         return createPayloadWithEncryptedBytesUsingCommonKey(combinedBytes);
     }
 
+    public static Payload createHeartbeatPayload(PublicKey publicKey, SecretKey secretKey) throws Exception {
+        // Convert enum to byte array
+        byte[] enumBytes = convertMessageContentTypeToByteArray(MessageContentType.Heartbeat.ordinal());
+
+        return  createPayLoadWithBytes(enumBytes, publicKey, secretKey);
+    }
+
     public static Payload createPayloadFromErrorProcessingImage(Mat image, int linePosition, PublicKey publicKey, SecretKey secretKey) throws Exception {
         // Convert enum to byte array
         byte[] enumBytes = convertMessageContentTypeToByteArray(MessageContentType.ErrorProcessingImage.ordinal());
@@ -188,6 +196,8 @@ public class Common {
                 return extractResponseMatPayloadData(messageBytes);
             case ErrorProcessingImage:
                 return extractErrorProcessingImagePayloadData(messageBytes);
+            case Heartbeat:
+                return new PayloadHeartbeatData();
             default:
                 return new PayloadData(MessageContentType.UndefinedType);
         }

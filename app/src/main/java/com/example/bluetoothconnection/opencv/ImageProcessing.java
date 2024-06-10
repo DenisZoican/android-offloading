@@ -34,11 +34,11 @@ public class ImageProcessing {
         Mat grayscaleMat = new Mat();
         Imgproc.cvtColor(originalImage, grayscaleMat, Imgproc.COLOR_BGR2GRAY);
 
-        try {
+        /*try {
             Thread.sleep(delay);
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
-        }
+        }*/
 
         return grayscaleMat;
     }

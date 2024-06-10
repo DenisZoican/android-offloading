@@ -1,6 +1,7 @@
 package com.example.bluetoothconnection.communication;
 
 import static com.example.bluetoothconnection.communication.Utils.Common.SERVICE_ID;
+import static com.example.bluetoothconnection.communication.Utils.Common.createHeartbeatPayload;
 import static com.example.bluetoothconnection.communication.Utils.Common.createPayloadFromDeviceNode;
 import static com.example.bluetoothconnection.communication.Utils.Common.createPayloadFromRequestMat;
 import static com.example.bluetoothconnection.communication.Utils.Common.createPayloadFromResponseMat;
@@ -19,10 +20,8 @@ import android.widget.ImageView;
 import android.widget.Toast;
 
 import com.example.bluetoothconnection.R;
-import com.example.bluetoothconnection.communication.Entities.CommunicationDetails;
 import com.example.bluetoothconnection.communication.Entities.DeviceInitialInfo;
 import com.example.bluetoothconnection.communication.Entities.DeviceUsedInProcessingDetails;
-import com.example.bluetoothconnection.opencv.ImageProcessing;
 import com.google.android.gms.nearby.connection.AdvertisingOptions;
 import com.google.android.gms.nearby.connection.ConnectionLifecycleCallback;
 import android.content.Intent;
@@ -43,10 +42,14 @@ import org.opencv.core.Mat;
 
 import java.security.KeyPair;
 import java.security.PublicKey;
+import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.Timer;
+import java.util.TimerTask;
 
 import javax.crypto.SecretKey;
 
@@ -59,6 +62,9 @@ public abstract class Device {
     protected Activity activity;
     protected final ConnectionsClient connectionsClient;
     public Context context;
+    protected final Timer verifyHeartbeatTimestamp = new Timer();
+    protected int sendHeartbeatInterval = 40000; //ms
+    protected int verifyHeartbeatInterval = sendHeartbeatInterval*3; //ms
 
     // protected Map<String, CommunicationDetails> devicesUsedInCurrentCommunicationDetails;
 
@@ -254,4 +260,33 @@ public abstract class Device {
         Bitmap receivedImageBitmap = convertImageToBitmap(image);
         imageView.setImageBitmap(receivedImageBitmap);
     }
+
+    protected void heartbeatReceivedBehaviour(String endpointId) {
+        DeviceUsedInProcessingDetails deviceUsedInProcessingDetails = devicesUsedInProcessing.get(endpointId);
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            LocalDateTime currentTimestamp = LocalDateTime.now();
+            deviceUsedInProcessingDetails.setLastHeartbeatReceivedTimestamp(currentTimestamp);
+        }
+    }
+    protected void verifyHeartbeatTimestamps() {
+        TimerTask task = new TimerTask() {
+            @Override
+            public void run() {
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                    LocalDateTime currentTimestamp = LocalDateTime.now();
+                    devicesUsedInProcessing.keySet().forEach(deviceUsedInProcessingEndpointId->{
+                        LocalDateTime lastHeartbeatTimestamp = devicesUsedInProcessing.get(deviceUsedInProcessingEndpointId).getLastHeartbeatReceivedTimestamp();
+                        Duration duration = Duration.between(lastHeartbeatTimestamp, currentTimestamp);
+                        int durationInMillis = (int) duration.toMillis();
+
+                        if(durationInMillis > verifyHeartbeatInterval) {
+                            onEndpointLostBehaviour(deviceUsedInProcessingEndpointId);
+                        }
+                    });
+                }
+            }
+        };
+        verifyHeartbeatTimestamp.scheduleAtFixedRate(task, 0, verifyHeartbeatInterval);
+    }
+    abstract protected void onEndpointLostBehaviour(String endpointId);
 }

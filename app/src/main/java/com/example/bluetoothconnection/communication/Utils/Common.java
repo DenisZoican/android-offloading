@@ -179,10 +179,11 @@ public class Common {
             if(toBeDecryptedBytes == null) {
                 return new PayloadData(MessageContentType.Error);
             }
+            decryptedContentBytes = getContentBytes(toBeDecryptedBytes, privateKey);
         } else {
-            toBeDecryptedBytes = getContentBytes(payloadBytes, privateKey);
+            decryptedContentBytes = getContentBytes(payloadBytes, privateKey);
         }
-        decryptedContentBytes = getContentBytes(toBeDecryptedBytes, privateKey);
+
         int messageContentTypeValue = convertByteArrayToMessageContentType(decryptedContentBytes); /// Use just first 4 bytes from here
         MessageContentType messageContentType = MessageContentType.values()[messageContentTypeValue];
 
@@ -204,7 +205,7 @@ public class Common {
     }
 
     public static PayloadData extractDeviceNodeFromPayload(Payload payload) throws Exception {
-        // Extract byte array from the payload
+        // Extract byte array from the payload (we remove the first byte representing the message type)
         byte[] payloadBytes = Arrays.copyOfRange(payload.asBytes(), 1, payload.asBytes().length);
         byte[] decryptedBytes = decryptWithCommonKey(payloadBytes);
 

@@ -1,5 +1,7 @@
 package com.example.bluetoothconnection.communication.Entities;
 
+import android.os.Build;
+
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -18,6 +20,9 @@ public class DeviceUsedInProcessingDetails {
         this.heightOfImagePart = heightOfImagePart;
         this.linePositionOfImagePart = linePositionOfImagePart;
         this.heightNeededToBeProcessed = heightOfImagePart;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            lastHeartbeatReceivedTimestamp = LocalDateTime.now();
+        }
     }
 
     public int getHeightNeededToBeProcessed() {

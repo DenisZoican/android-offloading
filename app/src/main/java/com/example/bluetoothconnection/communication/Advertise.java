@@ -211,6 +211,17 @@ public class Advertise extends Device {
     }
 
     private void responseMatReceivedBehavior(PayloadResponseMatData payloadResponseMatData, String endpointId) {
+        try {
+            sendResponseImagePartToSingleEndpoint(
+                    requestInitiatorEndpointId,
+                    payloadResponseMatData.getImage(),
+                    payloadResponseMatData.getLinePosition(),
+                    payloadResponseMatData.getProcessorNodeUniqueName()
+            );
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+
         DeviceUsedInProcessingDetails deviceUsedInProcessingDetails = devicesUsedInProcessing.get(endpointId);
         int remainedHeightToBeProcessed = deviceUsedInProcessingDetails.getHeightNeededToBeProcessed() - payloadResponseMatData.getImage().height();
         deviceUsedInProcessingDetails.setHeightNeededToBeProcessed(remainedHeightToBeProcessed);
@@ -222,17 +233,6 @@ public class Advertise extends Device {
                 sendHeartbeatTimer.cancel();
                 verifyHeartbeatTimestamp.cancel();
             }
-        }
-
-        try {
-            sendResponseImagePartToSingleEndpoint(
-                    requestInitiatorEndpointId,
-                    payloadResponseMatData.getImage(),
-                    payloadResponseMatData.getLinePosition(),
-                    payloadResponseMatData.getProcessorNodeUniqueName()
-            );
-        } catch (Exception e) {
-            throw new RuntimeException(e);
         }
     }
 
@@ -280,7 +280,6 @@ public class Advertise extends Device {
 
         if(linePosition < imageHeight){
             int heightOfImagePart = imageHeight - linePosition;
-
             processImagePartMyself(heightOfImagePart, linePosition);
         }
     }
@@ -292,7 +291,7 @@ public class Advertise extends Device {
         Mat partOfImageThatNeedsProcessed = getImagePart(imageThatNeedsToBeProcessed,imagePartLinePosition, imagePartHeight);
 
         Toast.makeText(activity, "Processing", Toast.LENGTH_SHORT).show();
-        Mat processedMat = processImage(partOfImageThatNeedsProcessed,3000);
+        Mat processedMat = processImage(partOfImageThatNeedsProcessed,30000);
         Toast.makeText(activity, "NOT Processing", Toast.LENGTH_SHORT).show();
 
         //partsNeededFromImage.remove(imagePartIndex);
@@ -317,55 +316,58 @@ public class Advertise extends Device {
         allDevicesTextView.setText(allNeighboursText);
     }
     protected void onEndpointLostBehaviour(String endpointId) {
-        getNode().getNeighbours().remove(endpointId);
-        List<String> sortedEndpointsThatAreNotUsedInProcessing = validNeighboursUsedInCurrentCommunication.entrySet().stream()
-                .filter(entry-> !devicesUsedInProcessing.containsKey(entry.getKey()))
-                .sorted((previous, current)-> (int) (current.getValue().getTotalWeight() - previous.getValue().getTotalWeight()))
-                .map(entry->entry.getKey()).collect(Collectors.toList());
-
-        DeviceUsedInProcessingDetails neighbourLostDetails = devicesUsedInProcessing.get(endpointId);
         devicesUsedInProcessing.remove(endpointId);
 
-        if(sortedEndpointsThatAreNotUsedInProcessing.size() == 0) {
-            //if(!devicesUsedInProcessing.containsKey("Aida")) {
-            if(false) {
-                try {
-                    processImagePartMyself(
-                            neighbourLostDetails.getHeightOfImagePart(),
-                            neighbourLostDetails.getLinePositionOfImagePart()
-                    ); //// Change this
-                } catch (Exception e) {
-                    throw new RuntimeException(e);
+        getNode().getNeighbours().remove(endpointId);
+        DeviceUsedInProcessingDetails neighbourLostDetails = devicesUsedInProcessing.get(endpointId);
+        if(neighbourLostDetails != null) {
+            List<String> sortedEndpointsThatAreNotUsedInProcessing = validNeighboursUsedInCurrentCommunication.entrySet().stream()
+                    .filter(entry-> !devicesUsedInProcessing.containsKey(entry.getKey()))
+                    .sorted((previous, current)-> (int) (current.getValue().getTotalWeight() - previous.getValue().getTotalWeight()))
+                    .map(entry->entry.getKey()).collect(Collectors.toList());
+
+            if(sortedEndpointsThatAreNotUsedInProcessing.size() == 0) {
+                //if(!devicesUsedInProcessing.containsKey("Aida")) {
+                if(false) {
+                    try {
+                        processImagePartMyself(
+                                neighbourLostDetails.getHeightOfImagePart(),
+                                neighbourLostDetails.getLinePositionOfImagePart()
+                        ); //// Change this
+                    } catch (Exception e) {
+                        throw new RuntimeException(e);
+                    }
+                } else {
+                    //trimit inapoi la discovery
+                    Mat partOfImageThatNeedsProcessed = getImagePart(
+                            imageThatNeedsToBeProcessed,
+                            neighbourLostDetails.getLinePositionOfImagePart(),
+                            neighbourLostDetails.getHeightNeededToBeProcessed()
+                    );
+                    try {
+                        Payload errorProcessingImagePayload = createPayloadFromErrorProcessingImage(
+                                partOfImageThatNeedsProcessed,
+                                neighbourLostDetails.getLinePositionOfImagePart(),
+                                getNode().getNeighbours().get(requestInitiatorEndpointId).getDeviceInitialInfo().getPublicKey(),
+                                AESSecretKeyUsedForMessages
+                        );
+                        connectionsClient.sendPayload(requestInitiatorEndpointId, errorProcessingImagePayload);
+                    } catch (Exception e) {
+                        throw new RuntimeException(e);
+                    }
+
                 }
             } else {
-                //trimit inapoi la discovery
-                Mat partOfImageThatNeedsProcessed = getImagePart(
-                        imageThatNeedsToBeProcessed,
-                        neighbourLostDetails.getLinePositionOfImagePart(),
-                        neighbourLostDetails.getHeightNeededToBeProcessed()
-                );
-                try {
-                    Payload errorProcessingImagePayload = createPayloadFromErrorProcessingImage(
-                            partOfImageThatNeedsProcessed,
-                            neighbourLostDetails.getLinePositionOfImagePart(),
-                            getNode().getNeighbours().get(requestInitiatorEndpointId).getDeviceInitialInfo().getPublicKey(),
-                            AESSecretKeyUsedForMessages
-                    );
-                    connectionsClient.sendPayload(requestInitiatorEndpointId, errorProcessingImagePayload);
-                } catch (Exception e) {
-                    throw new RuntimeException(e);
-                }
-
+                String availableNodeEndpointId = sortedEndpointsThatAreNotUsedInProcessing.get(0);
+                //si trimit la availableNodeEndpointId
             }
-        } else {
-            String availableNodeEndpointId = sortedEndpointsThatAreNotUsedInProcessing.get(0);
-            //si trimit la availableNodeEndpointId
+
+           if (devicesUsedInProcessing.size() == 0) {
+                sendHeartbeatTimer.cancel();
+                verifyHeartbeatTimestamp.cancel();
+            }
         }
 
-        if (devicesUsedInProcessing.size() == 0) {
-            sendHeartbeatTimer.cancel();
-            verifyHeartbeatTimestamp.cancel();
-        }
 
         List<String> endpointsIds = new ArrayList<>(getNode().getNeighbours().keySet());
         sendDeviceNode(endpointsIds, new HashSet<>());
@@ -383,6 +385,7 @@ public class Advertise extends Device {
             throw new RuntimeException(e);
         }
         connectionsClient.sendPayload(requestInitiatorEndpointId, heartbeatPayload);
+        System.out.println("Heartbeat trimis");
     }
 
     private void sendHeartbeatToRequestInitiatorAtFixedInterval() {

@@ -45,6 +45,7 @@ import java.security.PublicKey;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -63,8 +64,8 @@ public abstract class Device {
     protected final ConnectionsClient connectionsClient;
     public Context context;
     protected final Timer verifyHeartbeatTimestamp = new Timer();
-    protected int sendHeartbeatInterval = 40000; //ms
-    protected int verifyHeartbeatInterval = sendHeartbeatInterval*3; //ms
+    protected int sendHeartbeatInterval = 5000; //ms
+    protected int verifyHeartbeatInterval = sendHeartbeatInterval*2; //ms
 
     // protected Map<String, CommunicationDetails> devicesUsedInCurrentCommunicationDetails;
 
@@ -72,7 +73,7 @@ public abstract class Device {
     private double cpuUsage;
     private int cpuCores;
     private DeviceNode node;
-    protected Map<String, DeviceNode> validNeighboursUsedInCurrentCommunication;
+    protected Map<String, DeviceNode> validNeighboursUsedInCurrentCommunication = new HashMap<>();
 
     protected Map<String, DeviceUsedInProcessingDetails> devicesUsedInProcessing = new HashMap<>();
 
@@ -262,10 +263,15 @@ public abstract class Device {
     }
 
     protected void heartbeatReceivedBehaviour(String endpointId) {
+        Toast.makeText(activity, "Heartbeat received", Toast.LENGTH_SHORT).show();
         DeviceUsedInProcessingDetails deviceUsedInProcessingDetails = devicesUsedInProcessing.get(endpointId);
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-            LocalDateTime currentTimestamp = LocalDateTime.now();
-            deviceUsedInProcessingDetails.setLastHeartbeatReceivedTimestamp(currentTimestamp);
+
+        if(deviceUsedInProcessingDetails != null) {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                LocalDateTime currentTimestamp = LocalDateTime.now();
+                deviceUsedInProcessingDetails.setLastHeartbeatReceivedTimestamp(currentTimestamp);
+
+            }
         }
     }
     protected void verifyHeartbeatTimestamps() {
@@ -274,19 +280,26 @@ public abstract class Device {
             public void run() {
                 if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
                     LocalDateTime currentTimestamp = LocalDateTime.now();
-                    devicesUsedInProcessing.keySet().forEach(deviceUsedInProcessingEndpointId->{
+                    Set<String> lostEndpoints = new HashSet<>();
+                    devicesUsedInProcessing.keySet().stream().filter(endpointId->{
+                        return !endpointId.equals("Aida");
+                    }).forEach(deviceUsedInProcessingEndpointId->{
                         LocalDateTime lastHeartbeatTimestamp = devicesUsedInProcessing.get(deviceUsedInProcessingEndpointId).getLastHeartbeatReceivedTimestamp();
                         Duration duration = Duration.between(lastHeartbeatTimestamp, currentTimestamp);
                         int durationInMillis = (int) duration.toMillis();
 
                         if(durationInMillis > verifyHeartbeatInterval) {
-                            onEndpointLostBehaviour(deviceUsedInProcessingEndpointId);
+                            lostEndpoints.add(deviceUsedInProcessingEndpointId);
+                            //onEndpointLostBehaviour(deviceUsedInProcessingEndpointId);
                         }
+                    });
+                    lostEndpoints.forEach(lostEndpointId->{
+                        onEndpointLostBehaviour(lostEndpointId);
                     });
                 }
             }
         };
-        verifyHeartbeatTimestamp.scheduleAtFixedRate(task, 0, verifyHeartbeatInterval);
+        verifyHeartbeatTimestamp.scheduleAtFixedRate(task, sendHeartbeatInterval, verifyHeartbeatInterval);
     }
     abstract protected void onEndpointLostBehaviour(String endpointId);
 }

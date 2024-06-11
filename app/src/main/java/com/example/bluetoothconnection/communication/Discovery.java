@@ -74,9 +74,9 @@ public class Discovery extends Device{
         return new EndpointDiscoveryCallback() {
             @Override
             public void onEndpointFound(String endpointId, DiscoveredEndpointInfo info) {
-                /*if(hasConnectedToAdvertise){
+                if(hasConnectedToAdvertise){
                     return;
-                }*/
+                }
 
                 //just to test; helps connect to a single device so that other device can connect to the other one and create a graph
                 // We found an endpoint!
@@ -335,12 +335,12 @@ public class Discovery extends Device{
 
                 linePosition+=heightOfImagePartThatNeedsToBeProcessed;
             }
-
             if(linePosition < imageHeight){
                 int heightOfImagePart = imageHeight - linePosition;
 
                 processImagePartMyself(heightOfImagePart, linePosition);
             }
+
             verifyHeartbeatTimestamps();
         } else {
             ExternCommunicationUtils.uploadMat(imageThatNeedsToBeProcessed, true, new ExternUploadCallback() {
@@ -397,17 +397,18 @@ public class Discovery extends Device{
 
     private void responseMatReceivedBehavior(PayloadResponseMatData payloadResponseMatData, String endpointId){
         DeviceUsedInProcessingDetails deviceUsedInProcessingDetails = devicesUsedInProcessing.get(endpointId);
-        int remainedHeightToBeProcessed = deviceUsedInProcessingDetails.getHeightNeededToBeProcessed() - payloadResponseMatData.getImage().height();
-        deviceUsedInProcessingDetails.setHeightNeededToBeProcessed(remainedHeightToBeProcessed);
+        if(deviceUsedInProcessingDetails != null) {
+            int remainedHeightToBeProcessed = deviceUsedInProcessingDetails.getHeightNeededToBeProcessed() - payloadResponseMatData.getImage().height();
+            deviceUsedInProcessingDetails.setHeightNeededToBeProcessed(remainedHeightToBeProcessed);
 
-        if (remainedHeightToBeProcessed == 0) {
-            devicesUsedInProcessing.remove(endpointId);
+            if (remainedHeightToBeProcessed == 0) {
+                devicesUsedInProcessing.remove(endpointId);
 
-            if (devicesUsedInProcessing.size() == 0) {
-                verifyHeartbeatTimestamp.cancel();
+                if (devicesUsedInProcessing.size() == 0) {
+                    verifyHeartbeatTimestamp.cancel();
+                }
             }
         }
-
         Mat receivedMat = payloadResponseMatData.getImage();
 
         replacePartInImageFromGallery(imageThatNeedsToBeProcessed, receivedMat, payloadResponseMatData.getLinePosition());
@@ -454,24 +455,28 @@ public class Discovery extends Device{
         });
     }
     protected void onEndpointLostBehaviour(String endpointId) {
-        getNode().getNeighbours().remove(endpointId);
-        List<String> sortedEndpointsThatAreNotUsedInProcessing = validNeighboursUsedInCurrentCommunication.entrySet().stream()
-                .filter(entry-> !devicesUsedInProcessing.containsKey(entry.getKey()))
-                .sorted((previous, current)-> (int) (current.getValue().getTotalWeight() - previous.getValue().getTotalWeight()))
-                .map(entry->entry.getKey()).collect(Collectors.toList());
-
         DeviceUsedInProcessingDetails neighbourLostDetails = devicesUsedInProcessing.get(endpointId);
+
+        getNode().getNeighbours().remove(endpointId);
         devicesUsedInProcessing.remove(endpointId);
+        validNeighboursUsedInCurrentCommunication.remove(endpointId);
 
-        if(sortedEndpointsThatAreNotUsedInProcessing.size() == 0) {
-            processImagePartMyself(neighbourLostDetails.getHeightOfImagePart(), neighbourLostDetails.getLinePositionOfImagePart());
-        } else {
-            String availableNodeEndpointId = sortedEndpointsThatAreNotUsedInProcessing.get(0);
-            //si trimit la availableNodeEndpointId
-        }
+        if(neighbourLostDetails != null) {
+            List<String> sortedEndpointsThatAreNotUsedInProcessing = validNeighboursUsedInCurrentCommunication.entrySet().stream()
+                    .filter(entry-> !devicesUsedInProcessing.containsKey(entry.getKey()))
+                    .sorted((previous, current)-> (int) (current.getValue().getTotalWeight() - previous.getValue().getTotalWeight()))
+                    .map(entry->entry.getKey()).collect(Collectors.toList());
 
-        if (devicesUsedInProcessing.size() == 0) {
-            verifyHeartbeatTimestamp.cancel();
+            if(sortedEndpointsThatAreNotUsedInProcessing.size() == 0) {
+                processImagePartMyself(neighbourLostDetails.getHeightOfImagePart(), neighbourLostDetails.getLinePositionOfImagePart());
+            } else {
+                String availableNodeEndpointId = sortedEndpointsThatAreNotUsedInProcessing.get(0);
+                //si trimit la availableNodeEndpointId
+            }
+
+            if (devicesUsedInProcessing.size() == 0) {
+                verifyHeartbeatTimestamp.cancel();
+            }
         }
 
         List<String> endpointsIds = new ArrayList<>(getNode().getNeighbours().keySet());

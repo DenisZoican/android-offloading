@@ -104,7 +104,7 @@ public class MainActivity extends AppCompatActivity {
     private void initializeConfigValues(){
         AppConfig.initialize(this);
         AppConfig.setShouldEncryptData(true);
-        AppConfig.setShouldCreateHash(true);
+        AppConfig.setShouldCreateHash(false);
     }
     ////!!!!!!!!!!!!!!!!Aida: nu putem muta asta in Discovery din moment ce luam context din MainActivity
     //si il pasam ca param pentru Device??????????????????

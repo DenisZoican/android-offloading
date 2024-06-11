@@ -1,16 +1,24 @@
 package com.example.bluetoothconnection.communication;
 
 import static com.example.bluetoothconnection.communication.Utils.Common.SERVICE_ID;
+import static com.example.bluetoothconnection.communication.Utils.Common.createPayloadFromRequestMat;
+import static com.example.bluetoothconnection.communication.Utils.Common.createPayloadFromResponseMat;
 import static com.example.bluetoothconnection.communication.Utils.Encrypting.generateAESKey;
 import static com.example.bluetoothconnection.communication.Utils.Encrypting.generateRSAKeyPair;
 import static com.example.bluetoothconnection.communication.Utils.Encrypting.getEncryptedAuthenticationToken;
+import static com.example.bluetoothconnection.opencv.ImageProcessing.convertImageToBitmap;
+import static com.example.bluetoothconnection.opencv.ImageProcessing.replaceMat;
 
 import android.app.Activity;
 import android.content.BroadcastReceiver;
 import android.content.Context;
+import android.graphics.Bitmap;
+import android.widget.ImageView;
 import android.widget.Toast;
 
-import com.example.bluetoothconnection.communication.Entities.DeviceInitialInfo;
+import com.example.bluetoothconnection.R;
+import com.example.bluetoothconnection.communication.Entities.CommunicationDetails;
+import com.example.bluetoothconnection.opencv.ImageProcessing;
 import com.google.android.gms.nearby.connection.AdvertisingOptions;
 import com.google.android.gms.nearby.connection.ConnectionLifecycleCallback;
 import android.content.Intent;
@@ -27,7 +35,13 @@ import com.google.android.gms.nearby.connection.Payload;
 import com.google.android.gms.nearby.connection.Strategy;
 
 
+import org.opencv.core.Mat;
+
 import java.security.KeyPair;
+import java.security.PublicKey;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 import javax.crypto.SecretKey;
 
@@ -39,11 +53,15 @@ public abstract class Device {
     protected final ConnectionsClient connectionsClient;
     public Context context;
 
+    protected Map<String, CommunicationDetails> devicesUsedInCurrentCommunicationDetails;
+    protected Map<Integer, Mat> partsNeededFromImage;
 
     private float batteryLevel;
     private double cpuUsage;
     private int cpuCores;
     private DeviceNode node;
+    Map<String, DeviceNode> validNeighboursUsedInCurrentCommunication;
+    private int imagePartHeight;
 
     public Device(Context context, Activity activity, ConnectionsClient connectionsClient) throws Exception {
         this.activity = activity;
@@ -174,5 +192,50 @@ public abstract class Device {
             e.printStackTrace();
         }
         return cpuUsage;
+    }
+    protected void initializeImageValues(Mat image, int numberOfParts){
+        List<Mat> divideImages = ImageProcessing.divideImages(image,numberOfParts);
+        this.partsNeededFromImage =  new HashMap<>();
+        for(int i=0;i<numberOfParts;i++){
+            this.partsNeededFromImage.put(i,divideImages.get(i));
+        }
+
+        this.imagePartHeight = image.height()/numberOfParts;
+
+        this.devicesUsedInCurrentCommunicationDetails = new HashMap<>();
+    }
+
+    ///////////// Send message only if we have public key. Add a check
+    protected void sendRequestImagePartToSingleEndpoint(String endpointId, int imagePart) throws Exception {
+        ///////////// Send message only if we have public key. Add a check
+        if(devicesUsedInCurrentCommunicationDetails.containsKey(endpointId)) {
+            CommunicationDetails communicationDetails = devicesUsedInCurrentCommunicationDetails.get(endpointId);
+            communicationDetails.incrementFailedAttempts();
+        } else {
+            CommunicationDetails communicationDetails = new CommunicationDetails(imagePart);
+            devicesUsedInCurrentCommunicationDetails.put(endpointId,communicationDetails);
+        }
+
+        //PublicKey endpointPublicKey = discoveredDevices.get(endpointId).getPublicKey();
+        PublicKey endpointPublicKey = this.getNode().getNeighbours().get(endpointId).getDeviceInitialInfo().getPublicKey();
+
+        DeviceNode neighbourTreeNode = validNeighboursUsedInCurrentCommunication.get(endpointId);
+        int linePositionForImagePart = imagePartHeight*imagePart;
+        Payload payload = createPayloadFromRequestMat(partsNeededFromImage.get(imagePart), linePositionForImagePart, neighbourTreeNode, endpointPublicKey, AESSecretKeyUsedForMessages);
+        connectionsClient.sendPayload(endpointId, payload);
+    }
+
+    protected void sendResponseImagePartToSingleEndpoint(String endpointId, Mat processedImage, int linePositionForImagePart, String processorUniqueName) throws Exception {
+        PublicKey endpointPublicKey = this.getNode().getNeighbours().get(endpointId).getDeviceInitialInfo().getPublicKey();
+
+        Payload payload = createPayloadFromResponseMat(processedImage, linePositionForImagePart, processorUniqueName, endpointPublicKey, AESSecretKeyUsedForMessages);
+        connectionsClient.sendPayload(endpointId, payload);
+    }
+
+    protected void replacePartInImageFromGallery(Mat image, Mat imagePart, int linePositionForImagePart){
+        replaceMat(image, imagePart, linePositionForImagePart);
+        ImageView imageView = activity.findViewById(R.id.imageView);
+        Bitmap receivedImageBitmap = convertImageToBitmap(image);
+        imageView.setImageBitmap(receivedImageBitmap);
     }
 }

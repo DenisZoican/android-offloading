@@ -26,29 +26,34 @@ public class ImageProcessing {
         Mat grayscaleMat = new Mat();
         Imgproc.cvtColor(originalImage, grayscaleMat, Imgproc.COLOR_BGR2GRAY);
 
+        try {
+            Thread.sleep(5000);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+
         return grayscaleMat;
     }
 
     /// destMat - CVU_4, subMat - CVU_1
-    public static Mat replaceMat(Mat destMat, Mat subMat, int beginRowIndex){
-        Mat resultMat = destMat.clone();
+    public static void replaceMat(Mat destMat, Mat subMat, int heightOffset){
+        //Mat resultMat = destMat.clone();
 
         int destMatHeight = destMat.height();
 
         int subMatWidth = subMat.width();
         int subMatHeight = subMat.height();
 
-        int heightOffset = beginRowIndex*subMatHeight;
         for(int i=heightOffset;i<heightOffset+subMatHeight && i<destMatHeight;i++){
             for(int j=0;j<subMatWidth;j++){
                 double grayScaleValue = subMat.get(i - heightOffset, j)[0];
                 double[] newPixel = new double[]{grayScaleValue, grayScaleValue, grayScaleValue, 255.0};
 
-                resultMat.put(i,j,newPixel);
+                destMat.put(i,j,newPixel);
             }
         }
 
-        return resultMat;
+        //return destMat;
     }
 
     public static List<Mat> divideImages(Mat image, int divisionsCount){

@@ -8,11 +8,11 @@ import static com.example.bluetoothconnection.communication.Utils.Encrypting.enc
 import static com.example.bluetoothconnection.communication.Utils.Encrypting.encryptWithCommonKey;
 
 import com.example.bluetoothconnection.AppConfig;
-import com.example.bluetoothconnection.communication.Entities.DeviceInitialInfo;
 import com.example.bluetoothconnection.communication.Entities.DeviceNode;
 import com.example.bluetoothconnection.communication.PayloadDataEntities.PayloadData;
 import com.example.bluetoothconnection.communication.PayloadDataEntities.PayloadDeviceNodeData;
-import com.example.bluetoothconnection.communication.PayloadDataEntities.PayloadMatData;
+import com.example.bluetoothconnection.communication.PayloadDataEntities.PayloadRequestMatData;
+import com.example.bluetoothconnection.communication.PayloadDataEntities.PayloadResponseMatData;
 import com.google.android.gms.nearby.connection.Payload;
 
 import static com.example.bluetoothconnection.communication.Utils.Hashing.calculateHash;
@@ -34,25 +34,68 @@ import javax.crypto.spec.SecretKeySpec;
 
 public class Common {
     public enum MessageContentType {
-        DeviceNode, Image, Error, UndefinedType
+        DeviceNode, ResponseImage, RequestImage, Error, UndefinedType
     }
     public static final String SERVICE_ID = "com.example.nearbytest";
     public static final int ENCRYPTED_SECRET_KEY_LENGTH = 256;
     public static final int MESSAGE_CONTENT_TYPE_LENGTH = 4;
     public static final int HASH_LENGTH = 32; //bytes
+    public static final int IMAGE_SIZE_BYTE_LENGTH = 4; //bytes
+    public static final int PROCESSOR_NODE_UNIQUE_NAME_LENGTH = 36; //bytes
+    public static final int LINE_POSITION_FOR_IMAGE_PART_LENGTH = 4; //bytes
 
-    public static Payload createPayloadFromMat(Mat image, PublicKey publicKey, SecretKey secretKey) throws Exception {
+    public static Payload createPayloadFromRequestMat(Mat image, int linePositionForImagePart, DeviceNode treeNode, PublicKey publicKey, SecretKey secretKey) throws Exception {
         // Convert enum to byte array
-        byte[] enumBytes = convertMessageContentTypeToByteArray(MessageContentType.Image.ordinal());
+        byte[] enumBytes = convertMessageContentTypeToByteArray(MessageContentType.RequestImage.ordinal());
+
+        // Convert line position to byte array
+        byte[] linePositionForImagePartBytes =  ByteBuffer.allocate(LINE_POSITION_FOR_IMAGE_PART_LENGTH).putInt(linePositionForImagePart).array();
 
         // Convert image (Mat) to byte array
         byte[] imageBytes = convertMatToByteArray(image);
 
+        // Convert image size to byte array
+        int imageSize = imageBytes.length;
+        byte[] imageSizeBytes =  ByteBuffer.allocate(IMAGE_SIZE_BYTE_LENGTH).putInt(imageSize).array();
+
+        // Convert treeNode to byte array
+        byte[] treeNodeBytes = serializeObject(treeNode);
+
+
         // Combine enum and image bytes into a single byte array
-        byte[] combinedBytes = new byte[enumBytes.length + imageBytes.length];
+        byte[] combinedBytes = new byte[enumBytes.length + LINE_POSITION_FOR_IMAGE_PART_LENGTH + imageBytes.length + IMAGE_SIZE_BYTE_LENGTH + treeNodeBytes.length];
 
         System.arraycopy(enumBytes, 0, combinedBytes, 0, enumBytes.length);
-        System.arraycopy(imageBytes, 0, combinedBytes, enumBytes.length, imageBytes.length);
+        System.arraycopy(linePositionForImagePartBytes, 0, combinedBytes, enumBytes.length, LINE_POSITION_FOR_IMAGE_PART_LENGTH);
+        System.arraycopy(imageSizeBytes, 0, combinedBytes, enumBytes.length + LINE_POSITION_FOR_IMAGE_PART_LENGTH, IMAGE_SIZE_BYTE_LENGTH);
+        System.arraycopy(imageBytes, 0, combinedBytes, enumBytes.length + LINE_POSITION_FOR_IMAGE_PART_LENGTH + IMAGE_SIZE_BYTE_LENGTH, imageBytes.length);
+        System.arraycopy(treeNodeBytes, 0, combinedBytes,enumBytes.length + LINE_POSITION_FOR_IMAGE_PART_LENGTH + IMAGE_SIZE_BYTE_LENGTH + imageBytes.length, treeNodeBytes.length);
+
+        return createPayLoadWithBytes(combinedBytes, publicKey, secretKey);
+    }
+
+    public static Payload createPayloadFromResponseMat(Mat image, int linePositionForImagePart, String processorNodeUniqueName, PublicKey publicKey, SecretKey secretKey) throws Exception {
+        // Convert enum to byte array
+        byte[] enumBytes = convertMessageContentTypeToByteArray(MessageContentType.ResponseImage.ordinal());
+
+        // Convert line position to byte array
+        byte[] linePositionForImagePartBytes =  ByteBuffer.allocate(LINE_POSITION_FOR_IMAGE_PART_LENGTH).putInt(linePositionForImagePart).array();
+
+        // Convert image (Mat) to byte array
+        byte[] imageBytes = convertMatToByteArray(image);
+
+        int kol = processorNodeUniqueName.getBytes().length;
+        // Convert processorNodeUniqueName to byte array
+        byte[] processorNodeUniqueNameBytes = processorNodeUniqueName.getBytes();
+
+
+        // Combine enum and image bytes into a single byte array
+        byte[] combinedBytes = new byte[enumBytes.length + LINE_POSITION_FOR_IMAGE_PART_LENGTH + imageBytes.length + processorNodeUniqueNameBytes.length];
+
+        System.arraycopy(enumBytes, 0, combinedBytes, 0, enumBytes.length);
+        System.arraycopy(linePositionForImagePartBytes, 0, combinedBytes, enumBytes.length, LINE_POSITION_FOR_IMAGE_PART_LENGTH);
+        System.arraycopy(processorNodeUniqueNameBytes, 0, combinedBytes, enumBytes.length + LINE_POSITION_FOR_IMAGE_PART_LENGTH, PROCESSOR_NODE_UNIQUE_NAME_LENGTH);
+        System.arraycopy(imageBytes, 0, combinedBytes, enumBytes.length + LINE_POSITION_FOR_IMAGE_PART_LENGTH + PROCESSOR_NODE_UNIQUE_NAME_LENGTH, imageBytes.length);
 
         return createPayLoadWithBytes(combinedBytes, publicKey, secretKey);
     }
@@ -99,8 +142,10 @@ public class Common {
         System.arraycopy(decryptedContentBytes, MESSAGE_CONTENT_TYPE_LENGTH, messageBytes, 0, messageBytes.length);
 
         switch (messageContentType) {
-            case Image:
-                return extractMatPayloadData(messageBytes);
+            case RequestImage:
+                return extractRequestMatPayloadData(messageBytes);
+            case ResponseImage:
+                return extractResponseMatPayloadData(messageBytes);
             default:
                 return new PayloadData(MessageContentType.UndefinedType);
         }
@@ -172,11 +217,43 @@ public class Common {
         return Payload.fromBytes(bytes);
     }
 
-    private static PayloadMatData extractMatPayloadData(byte[] byteArray){
-        // Convert bytes back to enum and image
-        Mat image = convertByteArrayToMat(byteArray);
+    private static PayloadRequestMatData extractRequestMatPayloadData(byte[] byteArray){
+        byte[] linePositionBytes = new byte[LINE_POSITION_FOR_IMAGE_PART_LENGTH];
+        System.arraycopy(byteArray,0, linePositionBytes, 0, LINE_POSITION_FOR_IMAGE_PART_LENGTH);
+        int linePosition = ByteBuffer.wrap(linePositionBytes).getInt();
 
-        return new PayloadMatData(image);
+        byte[] imageLengthBytes = new byte[IMAGE_SIZE_BYTE_LENGTH];
+        System.arraycopy(byteArray, LINE_POSITION_FOR_IMAGE_PART_LENGTH, imageLengthBytes, 0, IMAGE_SIZE_BYTE_LENGTH);
+        int imageLength = ByteBuffer.wrap(imageLengthBytes).getInt();
+
+        byte[] imageBytes = new byte[imageLength];
+        System.arraycopy(byteArray , LINE_POSITION_FOR_IMAGE_PART_LENGTH + IMAGE_SIZE_BYTE_LENGTH, imageBytes, 0, imageLength);
+        // Convert bytes back to image
+        Mat image = convertByteArrayToMat(imageBytes);
+
+        int treeNodeLength =  byteArray.length - IMAGE_SIZE_BYTE_LENGTH - imageLength - LINE_POSITION_FOR_IMAGE_PART_LENGTH;
+        byte[] treeNodeBytes = new byte[treeNodeLength];
+        System.arraycopy(byteArray, LINE_POSITION_FOR_IMAGE_PART_LENGTH + IMAGE_SIZE_BYTE_LENGTH + imageLength, treeNodeBytes, 0, treeNodeLength);
+        DeviceNode treeNode = deserializeObject(treeNodeBytes, DeviceNode.class);
+
+        return new PayloadRequestMatData(image, treeNode, linePosition);
+    }
+
+    private static PayloadResponseMatData extractResponseMatPayloadData(byte[] byteArray){
+        byte[] linePositionLengthBytes = new byte[LINE_POSITION_FOR_IMAGE_PART_LENGTH];
+        System.arraycopy(byteArray,0, linePositionLengthBytes, 0, LINE_POSITION_FOR_IMAGE_PART_LENGTH);
+        int linePositionLength = ByteBuffer.wrap(linePositionLengthBytes).getInt();
+
+        byte[] processorUniqueNameBytes = new byte[PROCESSOR_NODE_UNIQUE_NAME_LENGTH];
+        System.arraycopy(byteArray, LINE_POSITION_FOR_IMAGE_PART_LENGTH, processorUniqueNameBytes, 0, PROCESSOR_NODE_UNIQUE_NAME_LENGTH);
+
+        int imageBytesLength = byteArray.length - PROCESSOR_NODE_UNIQUE_NAME_LENGTH - LINE_POSITION_FOR_IMAGE_PART_LENGTH;
+        byte[] imageBytes = new byte[imageBytesLength];
+        System.arraycopy(byteArray , PROCESSOR_NODE_UNIQUE_NAME_LENGTH + LINE_POSITION_FOR_IMAGE_PART_LENGTH, imageBytes, 0, imageBytesLength);
+        // Convert bytes back to image
+        Mat image = convertByteArrayToMat(imageBytes);
+
+        return new PayloadResponseMatData(image, processorUniqueNameBytes.toString(), linePositionLength);
     }
 
     private static byte[] convertMessageContentTypeToByteArray(int value) {
@@ -191,6 +268,7 @@ public class Common {
     private static int convertByteArrayToMessageContentType(byte[] bytes) {
         return ByteBuffer.wrap(bytes, 0, MESSAGE_CONTENT_TYPE_LENGTH).getInt();
     }
+
     public static Mat convertByteArrayToMat(byte[] bytes){
         MatOfByte matOfByte = new MatOfByte(bytes);
         return Imgcodecs.imdecode(matOfByte, Imgcodecs.IMREAD_UNCHANGED);

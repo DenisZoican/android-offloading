@@ -1,7 +1,6 @@
 package com.example.bluetoothconnection.communication;
 
 import static com.example.bluetoothconnection.communication.Utils.Common.SERVICE_ID;
-import static com.example.bluetoothconnection.communication.Utils.Common.createHeartbeatPayload;
 import static com.example.bluetoothconnection.communication.Utils.Common.createPayloadFromDeviceNode;
 import static com.example.bluetoothconnection.communication.Utils.Common.createPayloadFromRequestMat;
 import static com.example.bluetoothconnection.communication.Utils.Common.createPayloadFromResponseMat;
@@ -64,7 +63,7 @@ public abstract class Device {
     protected final ConnectionsClient connectionsClient;
     public Context context;
     protected final Timer verifyHeartbeatTimestamp = new Timer();
-    protected int sendHeartbeatInterval = 5000; //ms
+    protected int sendHeartbeatInterval = 3000; //ms
     protected int verifyHeartbeatInterval = sendHeartbeatInterval*2; //ms
 
     // protected Map<String, CommunicationDetails> devicesUsedInCurrentCommunicationDetails;
@@ -257,6 +256,10 @@ public abstract class Device {
 
     protected void replacePartInImageFromGallery(Mat image, Mat imagePart, int linePositionForImagePart){
         replaceMat(image, imagePart, linePositionForImagePart);
+        updateImageView(image);
+    }
+
+    protected  void updateImageView(Mat image){
         ImageView imageView = activity.findViewById(R.id.imageView);
         Bitmap receivedImageBitmap = convertImageToBitmap(image);
         imageView.setImageBitmap(receivedImageBitmap);
@@ -266,10 +269,12 @@ public abstract class Device {
         Toast.makeText(activity, "Heartbeat received", Toast.LENGTH_SHORT).show();
         DeviceUsedInProcessingDetails deviceUsedInProcessingDetails = devicesUsedInProcessing.get(endpointId);
 
+        System.out.println("Set heartbeat start");
         if(deviceUsedInProcessingDetails != null) {
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
                 LocalDateTime currentTimestamp = LocalDateTime.now();
                 deviceUsedInProcessingDetails.setLastHeartbeatReceivedTimestamp(currentTimestamp);
+                System.out.println("Set heartbeat "+endpointId+" - "+currentTimestamp.toString());
 
             }
         }
@@ -290,7 +295,6 @@ public abstract class Device {
 
                         if(durationInMillis > verifyHeartbeatInterval) {
                             lostEndpoints.add(deviceUsedInProcessingEndpointId);
-                            //onEndpointLostBehaviour(deviceUsedInProcessingEndpointId);
                         }
                     });
                     lostEndpoints.forEach(lostEndpointId->{
@@ -299,7 +303,7 @@ public abstract class Device {
                 }
             }
         };
-        verifyHeartbeatTimestamp.scheduleAtFixedRate(task, sendHeartbeatInterval, verifyHeartbeatInterval);
+        verifyHeartbeatTimestamp.scheduleAtFixedRate(task, verifyHeartbeatInterval, verifyHeartbeatInterval);
     }
     abstract protected void onEndpointLostBehaviour(String endpointId);
 }

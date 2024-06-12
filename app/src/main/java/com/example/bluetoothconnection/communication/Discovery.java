@@ -5,9 +5,12 @@ import static com.example.bluetoothconnection.communication.Utils.Encrypting.che
 import static com.example.bluetoothconnection.communication.Utils.Encrypting.getEncryptedAuthenticationToken;
 import static com.example.bluetoothconnection.opencv.ImageProcessing.getImagePart;
 import static com.example.bluetoothconnection.opencv.ImageProcessing.processImage;
+import static com.example.bluetoothconnection.opencv.ImageProcessing.replaceMat;
 
 import android.app.Activity;
 import android.content.Context;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.View;
 import android.widget.Button;
 import android.widget.ImageView;
@@ -51,6 +54,7 @@ import java.util.Map;
 import java.util.Queue;
 import java.util.Set;
 import java.util.stream.Collectors;
+
 
 public class Discovery extends Device{
     private static final int NEIGHBOUR_TRANSPORT_PENALTY = 1; // s/ms
@@ -359,21 +363,40 @@ public class Discovery extends Device{
     }
 
     private void processImagePartMyself(int imagePartHeight, int imagePartLinePosition) {
-        DeviceUsedInProcessingDetails deviceUsedInProcessingDetails = new DeviceUsedInProcessingDetails(imagePartHeight,imagePartLinePosition);
-        this.devicesUsedInProcessing.put("Aida", deviceUsedInProcessingDetails);
+        Handler handler = new Handler(Looper.getMainLooper());
 
-        Mat partOfImageThatNeedsProcessed = getImagePart(imageThatNeedsToBeProcessed, imagePartLinePosition, imagePartHeight);
-        Toast.makeText(activity, "Processing", Toast.LENGTH_SHORT).show();
-        Mat processedMat = processImage(partOfImageThatNeedsProcessed, 10000);
-        Toast.makeText(activity, "NOT Processing", Toast.LENGTH_SHORT).show();
+        Thread t1 = new Thread(new Runnable() {
+            @Override
+            public void run() {
 
-        replacePartInImageFromGallery(imageThatNeedsToBeProcessed, processedMat, imagePartLinePosition);
+                DeviceUsedInProcessingDetails deviceUsedInProcessingDetails = new DeviceUsedInProcessingDetails(imagePartHeight, imagePartLinePosition);
+                devicesUsedInProcessing.put("Aida", deviceUsedInProcessingDetails);
 
-        devicesUsedInProcessing.remove("Aida");
+                Mat partOfImageThatNeedsProcessed = getImagePart(imageThatNeedsToBeProcessed, imagePartLinePosition, imagePartHeight);
+                //Toast.makeText(activity, "Processing", Toast.LENGTH_SHORT).show();
+                Mat processedMat = processImage(partOfImageThatNeedsProcessed, 1000);
+                //Toast.makeText(activity, "NOT Processing", Toast.LENGTH_SHORT).show();
 
-        if (devicesUsedInProcessing.size() == 0) {
-            verifyHeartbeatTimestamp.cancel();
-        }
+                replaceMat(imageThatNeedsToBeProcessed, processedMat, imagePartLinePosition);
+                // replacePartInImageFromGallery(imageThatNeedsToBeProcessed, processedMat, imagePartLinePosition);
+
+                devicesUsedInProcessing.remove("Aida");
+
+                if (devicesUsedInProcessing.size() == 0) {
+                    verifyHeartbeatTimestamp.cancel();
+                }
+
+                handler.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        // Update your view here
+                        updateImageView(imageThatNeedsToBeProcessed);
+                    }
+                });
+
+            }
+        });
+        t1.start();
     }
 
     private void deviceNodeReceivedBehavior(PayloadDeviceNodeData payloadDeviceNodeData, String endpointId) {

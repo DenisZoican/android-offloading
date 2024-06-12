@@ -11,6 +11,9 @@ import static com.example.bluetoothconnection.opencv.ImageProcessing.processImag
 
 import android.app.Activity;
 import android.content.Context;
+import android.os.Build;
+import android.os.Handler;
+import android.os.Looper;
 import android.widget.ImageView;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -284,28 +287,47 @@ public class Advertise extends Device {
         }
     }
 
-    private void processImagePartMyself(int imagePartHeight, int imagePartLinePosition) throws Exception {
-        DeviceUsedInProcessingDetails deviceUsedInProcessingDetails = new DeviceUsedInProcessingDetails(imagePartHeight,imagePartLinePosition);
-        this.devicesUsedInProcessing.put("Aida", deviceUsedInProcessingDetails);
+    private void processImagePartMyself(int imagePartHeight, int imagePartLinePosition) {
+        Handler handler = new Handler(Looper.getMainLooper());
+        Thread t1 = new Thread(new Runnable() {
+            @Override
+            public void run() {
+                DeviceUsedInProcessingDetails deviceUsedInProcessingDetails = new DeviceUsedInProcessingDetails(imagePartHeight,imagePartLinePosition);
+                devicesUsedInProcessing.put("Aida", deviceUsedInProcessingDetails);
 
-        Mat partOfImageThatNeedsProcessed = getImagePart(imageThatNeedsToBeProcessed,imagePartLinePosition, imagePartHeight);
+                Mat partOfImageThatNeedsProcessed = getImagePart(imageThatNeedsToBeProcessed,imagePartLinePosition, imagePartHeight);
 
-        Toast.makeText(activity, "Processing", Toast.LENGTH_SHORT).show();
-        Mat processedMat = processImage(partOfImageThatNeedsProcessed,30000);
-        Toast.makeText(activity, "NOT Processing", Toast.LENGTH_SHORT).show();
+                // Toast.makeText(activity, "Processing", Toast.LENGTH_SHORT).show();
+                int delay = Build.MODEL.equals("SM-G991B") ?  1000 : 100000;
+                Mat processedMat = processImage(partOfImageThatNeedsProcessed,delay);
+                // Toast.makeText(activity, "NOT Processing", Toast.LENGTH_SHORT).show();
 
-        //partsNeededFromImage.remove(imagePartIndex);
-        sendResponseImagePartToSingleEndpoint(requestInitiatorEndpointId, processedMat, imagePartLinePosition + baseLinePositionForImageFromRequest, getNode().getUniqueName());
+                //partsNeededFromImage.remove(imagePartIndex);
+                try {
+                    sendResponseImagePartToSingleEndpoint(requestInitiatorEndpointId, processedMat, imagePartLinePosition + baseLinePositionForImageFromRequest, getNode().getUniqueName());
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
 
-        ImageView imageView = activity.findViewById(R.id.imageView);
-        imageView.setImageBitmap(convertImageToBitmap(processedMat));
 
-        devicesUsedInProcessing.remove("Aida");
 
-        if (devicesUsedInProcessing.size() == 0) {
-            sendHeartbeatTimer.cancel();
-            verifyHeartbeatTimestamp.cancel();
-        }
+                devicesUsedInProcessing.remove("Aida");
+
+                if (devicesUsedInProcessing.size() == 0) {
+                    sendHeartbeatTimer.cancel();
+                    verifyHeartbeatTimestamp.cancel();
+                }
+
+                handler.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        ImageView imageView = activity.findViewById(R.id.imageView);
+                        imageView.setImageBitmap(convertImageToBitmap(processedMat));
+                    }
+                });
+            }
+        });
+        t1.start();
     }
     ////// UI stuff
     private void updateAllDevicesTextView(){
@@ -316,10 +338,12 @@ public class Advertise extends Device {
         allDevicesTextView.setText(allNeighboursText);
     }
     protected void onEndpointLostBehaviour(String endpointId) {
-        devicesUsedInProcessing.remove(endpointId);
-
-        getNode().getNeighbours().remove(endpointId);
         DeviceUsedInProcessingDetails neighbourLostDetails = devicesUsedInProcessing.get(endpointId);
+
+        devicesUsedInProcessing.remove(endpointId);
+        getNode().getNeighbours().remove(endpointId);
+        validNeighboursUsedInCurrentCommunication.remove(endpointId);
+
         if(neighbourLostDetails != null) {
             List<String> sortedEndpointsThatAreNotUsedInProcessing = validNeighboursUsedInCurrentCommunication.entrySet().stream()
                     .filter(entry-> !devicesUsedInProcessing.containsKey(entry.getKey()))
@@ -328,7 +352,7 @@ public class Advertise extends Device {
 
             if(sortedEndpointsThatAreNotUsedInProcessing.size() == 0) {
                 //if(!devicesUsedInProcessing.containsKey("Aida")) {
-                if(false) {
+                if(true) {
                     try {
                         processImagePartMyself(
                                 neighbourLostDetails.getHeightOfImagePart(),

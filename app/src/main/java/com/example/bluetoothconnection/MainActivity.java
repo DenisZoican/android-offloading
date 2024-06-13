@@ -105,6 +105,7 @@ public class MainActivity extends AppCompatActivity {
         AppConfig.initialize(this);
         AppConfig.setShouldEncryptData(true);
         AppConfig.setShouldCreateHash(false);
+        AppConfig.setShouldOffloadTwice(false);
     }
     ////!!!!!!!!!!!!!!!!Aida: nu putem muta asta in Discovery din moment ce luam context din MainActivity
     //si il pasam ca param pentru Device??????????????????

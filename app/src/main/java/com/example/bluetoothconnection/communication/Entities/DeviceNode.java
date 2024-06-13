@@ -5,6 +5,7 @@ import android.os.Build;
 import java.io.Serializable;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Random;
 import java.util.UUID;
 
 public class DeviceNode implements Serializable {
@@ -50,7 +51,7 @@ public class DeviceNode implements Serializable {
                 Build.BRAND.length() % 10 +
                 Build.CPU_ABI.length() % 10 +
                 Build.DEVICE.length() % 10 +
-                Build.DISPLAY.length() % 10 +
+                (new Random()).nextInt() % 10 + ///////// TO DO - for the same models, is the same
                 Build.HOST.length() % 10 +
                 Build.ID.length() % 10 +
                 Build.MANUFACTURER.length() % 10 +

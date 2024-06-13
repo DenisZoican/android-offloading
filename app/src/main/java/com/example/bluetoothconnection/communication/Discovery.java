@@ -3,6 +3,7 @@ package com.example.bluetoothconnection.communication;
 import static com.example.bluetoothconnection.communication.Utils.Common.extractDataFromPayload;
 import static com.example.bluetoothconnection.communication.Utils.Encrypting.checkAuthenticationToken;
 import static com.example.bluetoothconnection.communication.Utils.Encrypting.getEncryptedAuthenticationToken;
+import static com.example.bluetoothconnection.opencv.ImageProcessing.compareHistograms;
 import static com.example.bluetoothconnection.opencv.ImageProcessing.getImagePart;
 import static com.example.bluetoothconnection.opencv.ImageProcessing.processImage;
 import static com.example.bluetoothconnection.opencv.ImageProcessing.replaceMat;
@@ -19,10 +20,13 @@ import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 
+import com.example.bluetoothconnection.AppConfig;
 import com.example.bluetoothconnection.R;
 import com.example.bluetoothconnection.communication.Entities.DeviceInitialInfo;
 import com.example.bluetoothconnection.communication.Entities.DeviceNode;
 import com.example.bluetoothconnection.communication.Entities.DeviceUsedInProcessingDetails;
+import com.example.bluetoothconnection.communication.Entities.ImageComparison;
+import com.example.bluetoothconnection.communication.Entities.ImageDetails;
 import com.example.bluetoothconnection.communication.Entities.ImagePartInterval;
 import com.example.bluetoothconnection.communication.Extern.ExternCommunicationUtils;
 import com.example.bluetoothconnection.communication.Extern.ExternUploadCallback;
@@ -31,6 +35,7 @@ import com.example.bluetoothconnection.communication.PayloadDataEntities.Payload
 import com.example.bluetoothconnection.communication.PayloadDataEntities.PayloadErrorProcessingMat;
 import com.example.bluetoothconnection.communication.PayloadDataEntities.PayloadResponseMatData;
 import com.example.bluetoothconnection.communication.Utils.Common;
+import com.example.bluetoothconnection.opencv.ImageProcessing;
 import com.google.android.gms.nearby.connection.ConnectionInfo;
 import com.google.android.gms.nearby.connection.ConnectionLifecycleCallback;
 import com.google.android.gms.nearby.connection.ConnectionResolution;
@@ -47,6 +52,7 @@ import org.opencv.core.Size;
 import org.opencv.imgproc.Imgproc;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
@@ -61,6 +67,9 @@ public class Discovery extends Device{
     private static final int NEIGHBOUR_TRANSPORT_PENALTY = 1; // s/ms
     private final int MAX_RETRIES = 10;
     private Set<String> familiarNodesUniqueNames = new HashSet<>();
+    private HashMap<String, ImageDetails> imagesUsedForConsistency = new HashMap<>();
+
+    private int heightOfImagePart;
 
     private boolean hasConnectedToAdvertise = false;
 
@@ -185,7 +194,7 @@ public class Discovery extends Device{
                     responseMatReceivedBehavior((PayloadResponseMatData)payloadData, endpointId);
                     break;
                 case ErrorProcessingImage:
-                    errorProcessingImageReceivedBehaviour((PayloadErrorProcessingMat) payloadData);
+                    errorProcessingImageReceivedBehaviour((PayloadErrorProcessingMat) payloadData, endpointId);
                     break;
                 case DeviceNode:
                     deviceNodeReceivedBehavior((PayloadDeviceNodeData)payloadData, endpointId);
@@ -306,60 +315,105 @@ public class Discovery extends Device{
         DeviceNode treeNode = convertGraphToTree(getNode(), visitedNodes);
         setNodesWeight(treeNode);
 
-        validNeighboursUsedInCurrentCommunication  = treeNode.getNeighbours().entrySet().stream().filter(entry-> entry.getValue().getTotalWeight() > 0.5)
+        validNeighboursUsedInCurrentCommunication  = treeNode.getNeighbours().entrySet().stream().filter(entry-> entry.getValue().getTotalWeight() != 0)
                                                     .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
         devicesUsedInProcessing = new HashMap();
-
-        double totalValidNodesWeight = validNeighboursUsedInCurrentCommunication.values().stream()
-                .map(DeviceNode::getTotalWeight)
-                .reduce(0.0, Double::sum);
-
-        double personalWeight = treeNode.getPersonalWeight();
-        if(personalWeight != 0){
-            totalValidNodesWeight += personalWeight;
-        }
-
-        if(totalValidNodesWeight > 0){
+        if(Boolean.parseBoolean(AppConfig.getShouldOffloadTwice()) && validNeighboursUsedInCurrentCommunication.size() >= 3) {
+            int numberOfParts = validNeighboursUsedInCurrentCommunication.size()/3;
+            heightOfImagePart = this.imageThatNeedsToBeProcessed.height()/numberOfParts;
             int linePosition = 0;
-            int imageHeight = imageThatNeedsToBeProcessed.height();
 
-            for (String neighbourEndpointId : validNeighboursUsedInCurrentCommunication.keySet()) {
-                double neighbourTotalWeight = validNeighboursUsedInCurrentCommunication.get(neighbourEndpointId).getTotalWeight();
-                double percentageOfImageToBeProcessed = neighbourTotalWeight * 100 / totalValidNodesWeight;
+            for(int i = 0; i < numberOfParts - 1; i++) {
 
-                int heightOfImagePartThatNeedsToBeProcessed = (int) (percentageOfImageToBeProcessed * imageHeight / 100);
+                Mat imagePart = getImagePart(imageThatNeedsToBeProcessed, linePosition, heightOfImagePart);
 
-                DeviceUsedInProcessingDetails deviceUsedInProcessingDetails = new DeviceUsedInProcessingDetails(heightOfImagePartThatNeedsToBeProcessed,linePosition);
+                for(int j = 0; j < 3; j++) {
+                    String neighbourEndpointId = (String) validNeighboursUsedInCurrentCommunication.keySet().toArray()[i*3+j];
+                    DeviceUsedInProcessingDetails deviceUsedInProcessingDetails = new DeviceUsedInProcessingDetails(heightOfImagePart,linePosition);
+                    this.devicesUsedInProcessing.put(neighbourEndpointId, deviceUsedInProcessingDetails);
+
+                    this.imagesUsedForConsistency.put(neighbourEndpointId,new ImageDetails(imagePart, i));
+
+                    try {
+                        sendRequestImageToSingleEndpoint(neighbourEndpointId, linePosition, imagePart);
+                    } catch (Exception e) {
+                        throw new RuntimeException(e);
+                    }
+                }
+                linePosition +=heightOfImagePart;
+            }
+
+            int lastImagePartHeight = this.imageThatNeedsToBeProcessed.height() - linePosition;
+            Mat imagePart = getImagePart(imageThatNeedsToBeProcessed, linePosition, lastImagePartHeight);
+
+            for(int j=0; j<3; j++){
+                String neighbourEndpointId = (String) validNeighboursUsedInCurrentCommunication.keySet().toArray()[(numberOfParts-1)*3+j];
+                DeviceUsedInProcessingDetails deviceUsedInProcessingDetails = new DeviceUsedInProcessingDetails(lastImagePartHeight,linePosition);
                 this.devicesUsedInProcessing.put(neighbourEndpointId, deviceUsedInProcessingDetails);
 
+                this.imagesUsedForConsistency.put(neighbourEndpointId,new ImageDetails(imagePart, numberOfParts - 1));
+
                 try {
-                    sendRequestImageToSingleEndpoint(neighbourEndpointId, heightOfImagePartThatNeedsToBeProcessed, linePosition);
+                    sendRequestImageToSingleEndpoint(neighbourEndpointId, lastImagePartHeight, linePosition);
                 } catch (Exception e) {
                     throw new RuntimeException(e);
                 }
-
-                linePosition+=heightOfImagePartThatNeedsToBeProcessed;
             }
-            if(linePosition < imageHeight){
-                int heightOfImagePart = imageHeight - linePosition;
-
-                processImagePartMyself(heightOfImagePart, linePosition);
-            }
-
             verifyHeartbeatTimestamps();
+
+
         } else {
-            ExternCommunicationUtils.uploadMat(imageThatNeedsToBeProcessed, true, new ExternUploadCallback() {
-                @Override
-                public void onSuccess(Mat processedMat) {
-                    // Handle the processed Mat (e.g., display it in an ImageView)
-                    replacePartInImageFromGallery(imageThatNeedsToBeProcessed, processedMat, 0);
+            double totalValidNodesWeight = validNeighboursUsedInCurrentCommunication.values().stream()
+                    .map(DeviceNode::getTotalWeight)
+                    .reduce(0.0, Double::sum);
+
+            double personalWeight = treeNode.getPersonalWeight();
+            if(personalWeight != 0){
+                totalValidNodesWeight += personalWeight;
+            }
+
+            if(totalValidNodesWeight > 0){
+                int linePosition = 0;
+                int imageHeight = imageThatNeedsToBeProcessed.height();
+
+                for (String neighbourEndpointId : validNeighboursUsedInCurrentCommunication.keySet()) {
+                    double neighbourTotalWeight = validNeighboursUsedInCurrentCommunication.get(neighbourEndpointId).getTotalWeight();
+                    double percentageOfImageToBeProcessed = neighbourTotalWeight * 100 / totalValidNodesWeight;
+
+                    int heightOfImagePartThatNeedsToBeProcessed = (int) (percentageOfImageToBeProcessed * imageHeight / 100);
+
+                    DeviceUsedInProcessingDetails deviceUsedInProcessingDetails = new DeviceUsedInProcessingDetails(heightOfImagePartThatNeedsToBeProcessed,linePosition);
+                    this.devicesUsedInProcessing.put(neighbourEndpointId, deviceUsedInProcessingDetails);
+
+                    try {
+                        sendRequestImageToSingleEndpoint(neighbourEndpointId, heightOfImagePartThatNeedsToBeProcessed, linePosition);
+                    } catch (Exception e) {
+                        throw new RuntimeException(e);
+                    }
+
+                    linePosition+=heightOfImagePartThatNeedsToBeProcessed;
                 }
-                @Override
-                public void onFailure(String errorMessage) {
-                    // Handle the error
-                    System.out.println(errorMessage);
+                if(linePosition < imageHeight){
+                    int heightOfImagePart = imageHeight - linePosition;
+
+                    processImagePartMyself(heightOfImagePart, linePosition);
                 }
-            });
+
+                verifyHeartbeatTimestamps();
+            } else {
+                ExternCommunicationUtils.uploadMat(imageThatNeedsToBeProcessed, true, new ExternUploadCallback() {
+                    @Override
+                    public void onSuccess(Mat processedMat) {
+                        // Handle the processed Mat (e.g., display it in an ImageView)
+                        replacePartInImageFromGallery(imageThatNeedsToBeProcessed, processedMat, 0);
+                    }
+                    @Override
+                    public void onFailure(String errorMessage) {
+                        // Handle the error
+                        System.out.println(errorMessage);
+                    }
+                });
+            }
         }
     }
 
@@ -379,12 +433,11 @@ public class Discovery extends Device{
                 //Toast.makeText(activity, "NOT Processing", Toast.LENGTH_SHORT).show();
 
                 replaceMat(imageThatNeedsToBeProcessed, processedMat, imagePartLinePosition);
-                // replacePartInImageFromGallery(imageThatNeedsToBeProcessed, processedMat, imagePartLinePosition);
 
                 devicesUsedInProcessing.remove("Aida");
 
                 if (devicesUsedInProcessing.size() == 0) {
-                    verifyHeartbeatTimestamp.cancel();
+                    finishedProcessing();
                 }
 
                 handler.post(new Runnable() {
@@ -435,13 +488,17 @@ public class Discovery extends Device{
                 devicesUsedInProcessing.remove(endpointId);
 
                 if (devicesUsedInProcessing.size() == 0) {
-                    verifyHeartbeatTimestamp.cancel();
+                    finishedProcessing();
                 }
             }
         }
         Mat receivedMat = payloadResponseMatData.getImage();
 
-        replacePartInImageFromGallery(imageThatNeedsToBeProcessed, receivedMat, payloadResponseMatData.getLinePosition());
+        if(Boolean.parseBoolean(AppConfig.getShouldOffloadTwice())){
+            replacePartInImageFromGallery(this.imagesUsedForConsistency.get(endpointId).getImage(), receivedMat, payloadResponseMatData.getLinePosition());
+        } else {
+            replacePartInImageFromGallery(this.imageThatNeedsToBeProcessed, receivedMat, payloadResponseMatData.getLinePosition());
+        }
 
         //devicesUsedInCurrentCommunicationDetails.remove(endpointId); ///// This may be a problem. IF we remove an id from different threads, we may have inconsticency.
         //partsNeededFromImage.remove(imagePartIndex);
@@ -453,14 +510,19 @@ public class Discovery extends Device{
         familiarNodesUniqueNames.add(payloadResponseMatData.getProcessorNodeUniqueName());
     }
 
-    private void errorProcessingImageReceivedBehaviour(PayloadErrorProcessingMat payloadErrorProcessingMat){
+    private void errorProcessingImageReceivedBehaviour(PayloadErrorProcessingMat payloadErrorProcessingMat, String endpointId){
         Mat partOfImageThatNeedsProcessed = payloadErrorProcessingMat.getImage();
 
         Toast.makeText(activity, "Processing", Toast.LENGTH_SHORT).show();
         Mat processedMat = processImage(partOfImageThatNeedsProcessed, 10000);
         Toast.makeText(activity, "NOT Processing", Toast.LENGTH_SHORT).show();
 
-        replacePartInImageFromGallery(imageThatNeedsToBeProcessed, processedMat, payloadErrorProcessingMat.getLinePosition());
+        if(Boolean.parseBoolean(AppConfig.getShouldOffloadTwice())){
+            replacePartInImageFromGallery(this.imagesUsedForConsistency.get(endpointId).getImage(), processedMat, payloadErrorProcessingMat.getLinePosition());
+        } else {
+            replacePartInImageFromGallery(this.imageThatNeedsToBeProcessed, processedMat, payloadErrorProcessingMat.getLinePosition());
+        }
+
     }
 
     /////////////// UI Elements
@@ -525,13 +587,62 @@ public class Discovery extends Device{
             });
 
             if (devicesUsedInProcessing.size() == 0) {
-                verifyHeartbeatTimestamp.cancel();
+                finishedProcessing();
             }
 
             List<String> endpointsIds = new ArrayList<>(getNode().getNeighbours().keySet());
             sendDeviceNode(endpointsIds, new HashSet<>());
 
             updateAllDevicesTextView();
+        }
+    }
+
+    private void finishedProcessing(){
+        verifyHeartbeatTimestamp.cancel();
+
+        if(Boolean.parseBoolean(AppConfig.getShouldOffloadTwice())) {
+            HashMap<Integer, List<Mat>> groupedProcessedImageParts = new HashMap<>();
+            for (ImageDetails value : imagesUsedForConsistency.values()) {
+                int imagePartIdentifier = value.getImageIdentifier();
+                if(groupedProcessedImageParts.get(imagePartIdentifier) == null){
+                    List<Mat> processedImageParts = new ArrayList<>();
+                    processedImageParts.add(value.getImage());
+                    groupedProcessedImageParts.put(imagePartIdentifier,processedImageParts);
+                } else {
+                    groupedProcessedImageParts.get(imagePartIdentifier).add(value.getImage());
+                }
+            }
+
+            for(int z = 0; z< groupedProcessedImageParts.values().size(); z++){
+                List<Mat> imagesForTheSameImagePart = groupedProcessedImageParts.get(z);
+
+                List<ImageComparison> imagesGroupedByComparisonForTheSameImagePart = new ArrayList<>();
+                List<Mat> histogramsForImageParts = imagesForTheSameImagePart.stream().map(ImageProcessing::calculateHistogram).collect(Collectors.toList());
+
+                for(int i = 0; i < imagesForTheSameImagePart.size(); i++){
+                    Mat histogram = histogramsForImageParts.get(i);
+                    Mat imagePart = imagesForTheSameImagePart.get(i);
+
+                    int j;
+                    for(j = 0;j < imagesGroupedByComparisonForTheSameImagePart.size(); j++){
+                        ImageComparison imagePartsThatAreEqualDetails = imagesGroupedByComparisonForTheSameImagePart.get(j);
+
+                        if(compareHistograms(imagePartsThatAreEqualDetails.getHistogram(),histogram) > 0.9){
+                            imagePartsThatAreEqualDetails.incrementCount();
+                            break;
+                        }
+                    }
+
+                    if(j == imagesGroupedByComparisonForTheSameImagePart.size()){
+                        ImageComparison imageComparison = new ImageComparison(imagePart,histogram, 1);
+                        imagesGroupedByComparisonForTheSameImagePart.add(imageComparison);
+                    }
+                }
+
+                imagesGroupedByComparisonForTheSameImagePart.sort(Comparator.comparingInt(ImageComparison::getCount));
+
+                replacePartInImageFromGallery(this.imageThatNeedsToBeProcessed, imagesGroupedByComparisonForTheSameImagePart.get(0).getImage(), z*heightOfImagePart );
+            }
         }
     }
 

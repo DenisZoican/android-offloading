@@ -8,9 +8,12 @@ import com.example.bluetoothconnection.R;
 import com.google.android.gms.nearby.connection.Payload;
 
 import org.opencv.android.Utils;
+import org.opencv.core.Core;
 import org.opencv.core.CvType;
 import org.opencv.core.Mat;
 import org.opencv.core.MatOfByte;
+import org.opencv.core.MatOfFloat;
+import org.opencv.core.MatOfInt;
 import org.opencv.core.Range;
 import org.opencv.core.Rect;
 import org.opencv.core.Size;
@@ -62,6 +65,47 @@ public class ImageProcessing {
         }
 
         //return destMat;
+    }
+
+    public static double compareHistograms(Mat hist1, Mat hist2) {
+        // Compare the histograms using correlation method
+        return Imgproc.compareHist(hist1, hist2, Imgproc.CV_COMP_CORREL);
+    }
+
+    public static Mat calculateHistogram(Mat img) {
+        // Separate the image into its respective color channels (B, G, R)
+        List<Mat> bgrPlanes = new ArrayList<>();
+        Core.split(img, bgrPlanes);
+
+        // Set histogram parameters
+        MatOfInt histSize = new MatOfInt(256);
+        MatOfFloat ranges = new MatOfFloat(0f, 256f);
+        MatOfInt channels = new MatOfInt(0);
+
+        // Calculate the histograms for each channel
+        Mat bHist = new Mat();
+        Mat gHist = new Mat();
+        Mat rHist = new Mat();
+
+        Imgproc.calcHist(bgrPlanes.subList(0, 1), channels, new Mat(), bHist, histSize, ranges, false);
+        Imgproc.calcHist(bgrPlanes.subList(1, 2), channels, new Mat(), gHist, histSize, ranges, false);
+        Imgproc.calcHist(bgrPlanes.subList(2, 3), channels, new Mat(), rHist, histSize, ranges, false);
+
+        // Normalize the histograms
+        Core.normalize(bHist, bHist, 0, 1, Core.NORM_MINMAX);
+        Core.normalize(gHist, gHist, 0, 1, Core.NORM_MINMAX);
+        Core.normalize(rHist, rHist, 0, 1, Core.NORM_MINMAX);
+
+        // Concatenate the histograms into a single Mat
+        List<Mat> histList = new ArrayList<>();
+        histList.add(bHist);
+        histList.add(gHist);
+        histList.add(rHist);
+
+        Mat hist = new Mat();
+        Core.hconcat(histList, hist);
+
+        return hist;
     }
 
     public static List<Mat> divideImages(Mat image, int divisionsCount){

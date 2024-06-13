@@ -8,6 +8,7 @@ public class AppConfig {
 
     private static final String SHOULD_ENCRYPT_DATA = "should-encrypt-data";
     private static final String SHOULD_CREATE_HASH = "should-create-hash";
+    private static final String SHOULD_OFFLOAD_TWICE = "should-offload-twice";
     private static SharedPreferences preferences = null;
 
     // Initialize the SharedPreferences instance
@@ -33,5 +34,11 @@ public class AppConfig {
         return preferences.getString(SHOULD_CREATE_HASH, null);
     }
 
+    public static String getShouldOffloadTwice() {
+        return preferences.getString(SHOULD_OFFLOAD_TWICE, null);
+    }
+    public static void setShouldOffloadTwice(Boolean value) {
+        preferences.edit().putString(SHOULD_OFFLOAD_TWICE, value.toString()).apply();
+    }
 
 }

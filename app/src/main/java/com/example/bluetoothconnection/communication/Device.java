@@ -209,6 +209,25 @@ public abstract class Device {
         return cpuUsage;
     }
 
+    protected void sendRequestImageToSingleEndpoint(String endpointId, int imagePartLinePosition, Mat imagePart) throws Exception {
+        ///////////// Send message only if we have public key. Add a check
+        /*if(devicesUsedInCurrentCommunicationDetails.containsKey(endpointId)) {
+            CommunicationDetails communicationDetails = devicesUsedInCurrentCommunicationDetails.get(endpointId);
+            communicationDetails.incrementFailedAttempts();
+        } else {
+            CommunicationDetails communicationDetails = new CommunicationDetails(imagePart);
+            devicesUsedInCurrentCommunicationDetails.put(endpointId,communicationDetails);
+        }*/
+
+        //PublicKey endpointPublicKey = discoveredDevices.get(endpointId).getPublicKey();
+        PublicKey endpointPublicKey = this.getNode().getNeighbours().get(endpointId).getDeviceInitialInfo().getPublicKey();
+
+        DeviceNode neighbourTreeNode = validNeighboursUsedInCurrentCommunication.get(endpointId);
+
+        Payload payload = createPayloadFromRequestMat(imagePart, imagePartLinePosition, neighbourTreeNode, endpointPublicKey, AESSecretKeyUsedForMessages);
+        connectionsClient.sendPayload(endpointId, payload);
+    }
+
     ///////////// Send message only if we have public key. Add a check
     protected void sendRequestImageToSingleEndpoint(String endpointId, int imagePartHeight, int imagePartLinePosition) throws Exception {
         ///////////// Send message only if we have public key. Add a check

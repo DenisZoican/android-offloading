@@ -21,6 +21,7 @@ import android.widget.Toast;
 import com.example.bluetoothconnection.R;
 import com.example.bluetoothconnection.communication.Entities.DeviceNode;
 import com.example.bluetoothconnection.communication.Entities.DeviceUsedInProcessingDetails;
+import com.example.bluetoothconnection.communication.Entities.ImagePartInterval;
 import com.example.bluetoothconnection.communication.PayloadDataEntities.PayloadData;
 import com.example.bluetoothconnection.communication.PayloadDataEntities.PayloadDeviceNodeData;
 import com.example.bluetoothconnection.communication.PayloadDataEntities.PayloadRequestMatData;
@@ -55,7 +56,7 @@ public class Advertise extends Device {
 
     private int baseLinePositionForImageFromRequest = 0;
 
-    private final Timer sendHeartbeatTimer = new Timer();
+    private Timer sendHeartbeatTimer;
 
     public Advertise(Context context, Activity activity, ConnectionsClient connectionsClient) throws Exception {
         super(context, activity, connectionsClient);
@@ -214,6 +215,24 @@ public class Advertise extends Device {
     }
 
     private void responseMatReceivedBehavior(PayloadResponseMatData payloadResponseMatData, String endpointId) {
+        DeviceUsedInProcessingDetails deviceUsedInProcessingDetails = devicesUsedInProcessing.get(endpointId);
+        int remainedHeightToBeProcessed = deviceUsedInProcessingDetails.getHeightNeededToBeProcessed() - payloadResponseMatData.getImage().height();
+        deviceUsedInProcessingDetails.setHeightNeededToBeProcessed(remainedHeightToBeProcessed);
+
+        int imagePartIntervalStart = payloadResponseMatData.getLinePosition();
+        int imagePartIntervalEnd =payloadResponseMatData.getLinePosition()+payloadResponseMatData.getImage().height();
+        ImagePartInterval imagePartInterval = new ImagePartInterval(imagePartIntervalStart, imagePartIntervalEnd);
+        deviceUsedInProcessingDetails.getProcessedImagePartsInterval().add(imagePartInterval);
+
+        if (remainedHeightToBeProcessed == 0) {
+            devicesUsedInProcessing.remove(endpointId);
+
+            if (devicesUsedInProcessing.size() == 0) {
+                sendHeartbeatTimer.cancel();
+                verifyHeartbeatTimestamp.cancel();
+            }
+        }
+
         try {
             sendResponseImagePartToSingleEndpoint(
                     requestInitiatorEndpointId,
@@ -223,19 +242,6 @@ public class Advertise extends Device {
             );
         } catch (Exception e) {
             throw new RuntimeException(e);
-        }
-
-        DeviceUsedInProcessingDetails deviceUsedInProcessingDetails = devicesUsedInProcessing.get(endpointId);
-        int remainedHeightToBeProcessed = deviceUsedInProcessingDetails.getHeightNeededToBeProcessed() - payloadResponseMatData.getImage().height();
-        deviceUsedInProcessingDetails.setHeightNeededToBeProcessed(remainedHeightToBeProcessed);
-
-        if (remainedHeightToBeProcessed == 0) {
-            devicesUsedInProcessing.remove(endpointId);
-
-            if (devicesUsedInProcessing.size() == 0) {
-                sendHeartbeatTimer.cancel();
-                verifyHeartbeatTimestamp.cancel();
-            }
         }
     }
 
@@ -299,7 +305,7 @@ public class Advertise extends Device {
 
                 // Toast.makeText(activity, "Processing", Toast.LENGTH_SHORT).show();
                 int delay = Build.MODEL.equals("SM-G991B") ?  1000 : 100000;
-                Mat processedMat = processImage(partOfImageThatNeedsProcessed,delay);
+                Mat processedMat = processImage(partOfImageThatNeedsProcessed,5000);
                 // Toast.makeText(activity, "NOT Processing", Toast.LENGTH_SHORT).show();
 
                 //partsNeededFromImage.remove(imagePartIndex);
@@ -345,46 +351,66 @@ public class Advertise extends Device {
         validNeighboursUsedInCurrentCommunication.remove(endpointId);
 
         if(neighbourLostDetails != null) {
-            List<String> sortedEndpointsThatAreNotUsedInProcessing = validNeighboursUsedInCurrentCommunication.entrySet().stream()
-                    .filter(entry-> !devicesUsedInProcessing.containsKey(entry.getKey()))
-                    .sorted((previous, current)-> (int) (current.getValue().getTotalWeight() - previous.getValue().getTotalWeight()))
-                    .map(entry->entry.getKey()).collect(Collectors.toList());
+            List<ImagePartInterval> remainingImagePartsToBeProcessed = getRemainingImageParts(neighbourLostDetails.getProcessedImagePartsInterval(),
+                                                                        neighbourLostDetails.getLinePositionOfImagePart(),
+                                                                        neighbourLostDetails.getHeightOfImagePart());
 
-            if(sortedEndpointsThatAreNotUsedInProcessing.size() == 0) {
-                //if(!devicesUsedInProcessing.containsKey("Aida")) {
-                if(true) {
-                    try {
-                        processImagePartMyself(
-                                neighbourLostDetails.getHeightOfImagePart(),
-                                neighbourLostDetails.getLinePositionOfImagePart()
-                        ); //// Change this
-                    } catch (Exception e) {
-                        throw new RuntimeException(e);
+            remainingImagePartsToBeProcessed.forEach(processedImagePartsInterval->{
+
+                List<String> sortedEndpointsThatAreNotUsedInProcessing = validNeighboursUsedInCurrentCommunication.entrySet().stream()
+                        .filter(entry-> !devicesUsedInProcessing.containsKey(entry.getKey()))
+                        .sorted((previous, current)-> (int) (current.getValue().getTotalWeight() - previous.getValue().getTotalWeight()))
+                        .map(entry->entry.getKey()).collect(Collectors.toList());
+
+                if(sortedEndpointsThatAreNotUsedInProcessing.size() == 0) {
+                    //if(!devicesUsedInProcessing.containsKey("Aida")) {
+                    if(true) {
+                        try {
+                            processImagePartMyself(
+                                    processedImagePartsInterval.getEnd()-processedImagePartsInterval.getStart(),
+                                    processedImagePartsInterval.getStart()
+                            ); //// Change this
+                        } catch (Exception e) {
+                            throw new RuntimeException(e);
+                        }
+                    } else {
+                        //trimit inapoi la discovery
+                        Mat partOfImageThatNeedsProcessed = getImagePart(
+                                imageThatNeedsToBeProcessed,
+                                processedImagePartsInterval.getStart(),
+                                processedImagePartsInterval.getEnd()-processedImagePartsInterval.getStart()
+                        );
+                        try {
+                            Payload errorProcessingImagePayload = createPayloadFromErrorProcessingImage(
+                                    partOfImageThatNeedsProcessed,
+                                    processedImagePartsInterval.getStart(),
+                                    getNode().getNeighbours().get(requestInitiatorEndpointId).getDeviceInitialInfo().getPublicKey(),
+                                    AESSecretKeyUsedForMessages
+                            );
+                            connectionsClient.sendPayload(requestInitiatorEndpointId, errorProcessingImagePayload);
+                        } catch (Exception e) {
+                            throw new RuntimeException(e);
+                        }
+
                     }
                 } else {
-                    //trimit inapoi la discovery
-                    Mat partOfImageThatNeedsProcessed = getImagePart(
-                            imageThatNeedsToBeProcessed,
-                            neighbourLostDetails.getLinePositionOfImagePart(),
-                            neighbourLostDetails.getHeightNeededToBeProcessed()
+                    String availableNodeEndpointId = sortedEndpointsThatAreNotUsedInProcessing.get(0);
+
+                    DeviceUsedInProcessingDetails deviceUsedInProcessingDetails = new DeviceUsedInProcessingDetails(
+                            processedImagePartsInterval.getEnd()-processedImagePartsInterval.getStart(),
+                            processedImagePartsInterval.getStart()
                     );
+                    this.devicesUsedInProcessing.put(availableNodeEndpointId, deviceUsedInProcessingDetails);
+
                     try {
-                        Payload errorProcessingImagePayload = createPayloadFromErrorProcessingImage(
-                                partOfImageThatNeedsProcessed,
-                                neighbourLostDetails.getLinePositionOfImagePart(),
-                                getNode().getNeighbours().get(requestInitiatorEndpointId).getDeviceInitialInfo().getPublicKey(),
-                                AESSecretKeyUsedForMessages
-                        );
-                        connectionsClient.sendPayload(requestInitiatorEndpointId, errorProcessingImagePayload);
+                        sendRequestImageToSingleEndpoint(availableNodeEndpointId,
+                                processedImagePartsInterval.getEnd()-processedImagePartsInterval.getStart(),
+                                processedImagePartsInterval.getStart());
                     } catch (Exception e) {
                         throw new RuntimeException(e);
                     }
-
                 }
-            } else {
-                String availableNodeEndpointId = sortedEndpointsThatAreNotUsedInProcessing.get(0);
-                //si trimit la availableNodeEndpointId
-            }
+            });
 
            if (devicesUsedInProcessing.size() == 0) {
                 sendHeartbeatTimer.cancel();
@@ -413,6 +439,7 @@ public class Advertise extends Device {
     }
 
     private void sendHeartbeatToRequestInitiatorAtFixedInterval() {
+        sendHeartbeatTimer = new Timer();
         TimerTask task = new TimerTask() {
             @Override
             public void run() {

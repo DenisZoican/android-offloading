@@ -9,9 +9,11 @@ import javax.crypto.SecretKey;
 
 public class DeviceInitialInfo implements Serializable {
     private final PublicKey publicKey;
-    @Nullable
+
     private final float batteryPercentage;
+
     private double cpuUsage;
+
     private int cpuCores;
 
     public DeviceInitialInfo(PublicKey publicKey, float batteryPercentage, double cpuUsage, int cpuCores) {

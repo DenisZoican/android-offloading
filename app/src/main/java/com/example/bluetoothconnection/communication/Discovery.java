@@ -23,6 +23,7 @@ import com.example.bluetoothconnection.R;
 import com.example.bluetoothconnection.communication.Entities.DeviceInitialInfo;
 import com.example.bluetoothconnection.communication.Entities.DeviceNode;
 import com.example.bluetoothconnection.communication.Entities.DeviceUsedInProcessingDetails;
+import com.example.bluetoothconnection.communication.Entities.ImagePartInterval;
 import com.example.bluetoothconnection.communication.Extern.ExternCommunicationUtils;
 import com.example.bluetoothconnection.communication.Extern.ExternUploadCallback;
 import com.example.bluetoothconnection.communication.PayloadDataEntities.PayloadData;
@@ -374,7 +375,7 @@ public class Discovery extends Device{
 
                 Mat partOfImageThatNeedsProcessed = getImagePart(imageThatNeedsToBeProcessed, imagePartLinePosition, imagePartHeight);
                 //Toast.makeText(activity, "Processing", Toast.LENGTH_SHORT).show();
-                Mat processedMat = processImage(partOfImageThatNeedsProcessed, 1000);
+                Mat processedMat = processImage(partOfImageThatNeedsProcessed, 10000);
                 //Toast.makeText(activity, "NOT Processing", Toast.LENGTH_SHORT).show();
 
                 replaceMat(imageThatNeedsToBeProcessed, processedMat, imagePartLinePosition);
@@ -420,11 +421,17 @@ public class Discovery extends Device{
 
     private void responseMatReceivedBehavior(PayloadResponseMatData payloadResponseMatData, String endpointId){
         DeviceUsedInProcessingDetails deviceUsedInProcessingDetails = devicesUsedInProcessing.get(endpointId);
+
         if(deviceUsedInProcessingDetails != null) {
-            int remainedHeightToBeProcessed = deviceUsedInProcessingDetails.getHeightNeededToBeProcessed() - payloadResponseMatData.getImage().height();
+            int remainedHeightToBeProcessed = deviceUsedInProcessingDetails.getHeightNeededToBeProcessed() - payloadResponseMatData.getImage().height() - 1; //TO DO POSSIBLE PROBLEM: we dont divide the images correctly sin some cases, we receive one extra line
             deviceUsedInProcessingDetails.setHeightNeededToBeProcessed(remainedHeightToBeProcessed);
 
-            if (remainedHeightToBeProcessed == 0) {
+            int imagePartIntervalStart = payloadResponseMatData.getLinePosition();
+            int imagePartIntervalEnd =payloadResponseMatData.getLinePosition()+payloadResponseMatData.getImage().height();
+            ImagePartInterval imagePartInterval = new ImagePartInterval(imagePartIntervalStart, imagePartIntervalEnd);
+            deviceUsedInProcessingDetails.getProcessedImagePartsInterval().add(imagePartInterval);
+
+            if (remainedHeightToBeProcessed <= 0) {
                 devicesUsedInProcessing.remove(endpointId);
 
                 if (devicesUsedInProcessing.size() == 0) {
@@ -485,27 +492,47 @@ public class Discovery extends Device{
         validNeighboursUsedInCurrentCommunication.remove(endpointId);
 
         if(neighbourLostDetails != null) {
-            List<String> sortedEndpointsThatAreNotUsedInProcessing = validNeighboursUsedInCurrentCommunication.entrySet().stream()
-                    .filter(entry-> !devicesUsedInProcessing.containsKey(entry.getKey()))
-                    .sorted((previous, current)-> (int) (current.getValue().getTotalWeight() - previous.getValue().getTotalWeight()))
-                    .map(entry->entry.getKey()).collect(Collectors.toList());
+            List<ImagePartInterval> remainingImagePartsToBeProcessed = getRemainingImageParts(neighbourLostDetails.getProcessedImagePartsInterval(),
+                    neighbourLostDetails.getLinePositionOfImagePart(),
+                    neighbourLostDetails.getHeightOfImagePart());
 
-            if(sortedEndpointsThatAreNotUsedInProcessing.size() == 0) {
-                processImagePartMyself(neighbourLostDetails.getHeightOfImagePart(), neighbourLostDetails.getLinePositionOfImagePart());
-            } else {
-                String availableNodeEndpointId = sortedEndpointsThatAreNotUsedInProcessing.get(0);
-                //si trimit la availableNodeEndpointId
-            }
+            remainingImagePartsToBeProcessed.forEach(processedImagePartsInterval->{
+
+                List<String> sortedEndpointsThatAreNotUsedInProcessing = validNeighboursUsedInCurrentCommunication.entrySet().stream()
+                        .filter(entry-> !devicesUsedInProcessing.containsKey(entry.getKey()))
+                        .sorted((previous, current)-> (int) (current.getValue().getTotalWeight() - previous.getValue().getTotalWeight()))
+                        .map(entry->entry.getKey()).collect(Collectors.toList());
+
+                if(sortedEndpointsThatAreNotUsedInProcessing.size() == 0) {
+                    processImagePartMyself(processedImagePartsInterval.getEnd()-processedImagePartsInterval.getStart(), processedImagePartsInterval.getStart());
+                } else {
+                    String availableNodeEndpointId = sortedEndpointsThatAreNotUsedInProcessing.get(0);
+
+                    DeviceUsedInProcessingDetails deviceUsedInProcessingDetails = new DeviceUsedInProcessingDetails(
+                            processedImagePartsInterval.getEnd()-processedImagePartsInterval.getStart(),
+                            processedImagePartsInterval.getStart()
+                    );
+                    this.devicesUsedInProcessing.put(availableNodeEndpointId, deviceUsedInProcessingDetails);
+
+                    try {
+                        sendRequestImageToSingleEndpoint(availableNodeEndpointId,
+                                processedImagePartsInterval.getEnd()-processedImagePartsInterval.getStart(),
+                                processedImagePartsInterval.getStart());
+                    } catch (Exception e) {
+                        throw new RuntimeException(e);
+                    }
+                }
+            });
 
             if (devicesUsedInProcessing.size() == 0) {
                 verifyHeartbeatTimestamp.cancel();
             }
+
+            List<String> endpointsIds = new ArrayList<>(getNode().getNeighbours().keySet());
+            sendDeviceNode(endpointsIds, new HashSet<>());
+
+            updateAllDevicesTextView();
         }
-
-        List<String> endpointsIds = new ArrayList<>(getNode().getNeighbours().keySet());
-        sendDeviceNode(endpointsIds, new HashSet<>());
-
-        updateAllDevicesTextView();
     }
 
     private void updateAllDevicesTextView(){

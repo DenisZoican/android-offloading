@@ -14,7 +14,7 @@ public class DeviceUsedInProcessingDetails {
     private final int linePositionOfImagePart;
     private LocalDateTime lastHeartbeatReceivedTimestamp;
 
-    private List<ImagePartInterval> imagePartIntervals = new ArrayList<>();
+    private List<ImagePartInterval> processedImagePartsInterval = new ArrayList<>();
 
     public DeviceUsedInProcessingDetails(int heightOfImagePart, int linePositionOfImagePart) {
         this.heightOfImagePart = heightOfImagePart;
@@ -29,8 +29,8 @@ public class DeviceUsedInProcessingDetails {
         return heightNeededToBeProcessed;
     }
 
-    public List<ImagePartInterval> getImagePartIntervals() {
-        return imagePartIntervals;
+    public List<ImagePartInterval> getProcessedImagePartsInterval() {
+        return processedImagePartsInterval;
     }
 
     public void setHeightNeededToBeProcessed(int heightNeededToBeProcessed) {

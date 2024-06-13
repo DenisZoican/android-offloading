@@ -21,6 +21,7 @@ import android.widget.Toast;
 import com.example.bluetoothconnection.R;
 import com.example.bluetoothconnection.communication.Entities.DeviceInitialInfo;
 import com.example.bluetoothconnection.communication.Entities.DeviceUsedInProcessingDetails;
+import com.example.bluetoothconnection.communication.Entities.ImagePartInterval;
 import com.google.android.gms.nearby.connection.AdvertisingOptions;
 import com.google.android.gms.nearby.connection.ConnectionLifecycleCallback;
 import android.content.Intent;
@@ -43,6 +44,7 @@ import java.security.KeyPair;
 import java.security.PublicKey;
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -62,7 +64,7 @@ public abstract class Device {
     protected Activity activity;
     protected final ConnectionsClient connectionsClient;
     public Context context;
-    protected final Timer verifyHeartbeatTimestamp = new Timer();
+    protected Timer verifyHeartbeatTimestamp;
     protected int sendHeartbeatInterval = 3000; //ms
     protected int verifyHeartbeatInterval = sendHeartbeatInterval*2; //ms
 
@@ -303,7 +305,34 @@ public abstract class Device {
                 }
             }
         };
+        verifyHeartbeatTimestamp = new Timer();
         verifyHeartbeatTimestamp.scheduleAtFixedRate(task, verifyHeartbeatInterval, verifyHeartbeatInterval);
     }
     abstract protected void onEndpointLostBehaviour(String endpointId);
+
+    protected List<ImagePartInterval> getRemainingImageParts(List<ImagePartInterval> processedImagePartsIntervals, int linePosition, int imageHeight) {
+        short[] intervalArray = new short[imageHeight];
+        processedImagePartsIntervals.forEach(processedImagePartsInterval->{
+            intervalArray[processedImagePartsInterval.getStart() - linePosition] = 1;
+            intervalArray[processedImagePartsInterval.getEnd() - linePosition] = -1;
+        });
+        List<ImagePartInterval> resultImagePartsIntervals = new ArrayList<>();
+
+        short sum = 0;
+        for(int i = 0; i < imageHeight; i++) {
+            sum += intervalArray[i];
+            if(sum == 0){
+                int start = i;
+                i++;
+                while(sum == 0 && i < imageHeight) {
+                    sum += intervalArray[i];
+                    i++;
+                }
+                ImagePartInterval imagePartInterval = new ImagePartInterval(linePosition + start, linePosition + i - 1);
+                resultImagePartsIntervals.add(imagePartInterval);
+            }
+        }
+
+        return resultImagePartsIntervals;
+    }
 }

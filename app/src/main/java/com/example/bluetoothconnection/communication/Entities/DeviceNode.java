@@ -13,7 +13,7 @@ public class DeviceNode implements Serializable {
     private double totalWeight;
 
     private double personalWeight;
-    private String uniqueName = getHardwareID();//UUID.randomUUID().toString();//
+    private String uniqueName = getHardwareID();
 
     public DeviceNode() {
         this.neighbours = new HashMap<>();

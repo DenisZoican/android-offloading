@@ -7,6 +7,7 @@ import org.opencv.core.Mat;
 public class PayloadErrorProcessingMat extends PayloadData{
     private int linePosition;
     private Mat image;
+
     public PayloadErrorProcessingMat(Mat image, int linePosition) {
         super(Common.MessageContentType.ErrorProcessingImage);
         this.image = image;

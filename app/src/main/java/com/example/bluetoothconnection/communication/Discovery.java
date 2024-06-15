@@ -649,14 +649,14 @@ public class Discovery extends Device{
     private void updateAllDevicesTextView(){
         TextView allDevicesTextView = activity.findViewById(R.id.allDevices);
 
-        String allDevicesIdString = "";
+        String allDevicesIdString = "Connected devices:" + "\n";
         Map<String,DeviceNode> neighbours = this.getNode().getNeighbours();
         for (String endpointId : neighbours.keySet())
         {
             DeviceInitialInfo deviceInfo = neighbours.get(endpointId).getDeviceInitialInfo();
             float batteryPercentage = deviceInfo.getBatteryPercentage();
             DeviceNode neighbour = neighbours.get(endpointId);
-            allDevicesIdString += endpointId + " - Battery level: " + batteryPercentage + "% " + neighbour.getNeighbours().size() + "\t";
+            allDevicesIdString += endpointId + " " + "Neighbours: " + neighbour.getNeighbours().size() + "\n";
         }
 
         allDevicesTextView.setText(allDevicesIdString);

@@ -10,37 +10,20 @@
               <deviceKey>
                 <Key>
                   <type value="SERIAL_NUMBER" />
-                  <value value="adb-28221FDH200A60-ifMEAQ._adb-tls-connect._tcp" />
+                  <value value="adb-27061JEGR02271-qmqBnO._adb-tls-connect._tcp" />
                 </Key>
               </deviceKey>
             </Target>
           </runningDeviceTargetSelectedWithDropDown>
-          <timeTargetWasSelectedWithDropDown value="2024-06-13T22:27:28.883188800Z" />
+          <timeTargetWasSelectedWithDropDown value="2024-06-15T10:28:31.012113600Z" />
+          <multipleDevicesSelectedInDropDown value="true" />
           <runningDeviceTargetsSelectedWithDialog>
             <Target>
               <type value="RUNNING_DEVICE_TARGET" />
               <deviceKey>
                 <Key>
                   <type value="SERIAL_NUMBER" />
-                  <value value="adb-27061JEGR02271-qmqBnO._adb-tls-connect._tcp" />
-                </Key>
-              </deviceKey>
-            </Target>
-            <Target>
-              <type value="RUNNING_DEVICE_TARGET" />
-              <deviceKey>
-                <Key>
-                  <type value="SERIAL_NUMBER" />
-                  <value value="adb-27131JEGR13519-fgFPf7._adb-tls-connect._tcp" />
-                </Key>
-              </deviceKey>
-            </Target>
-            <Target>
-              <type value="RUNNING_DEVICE_TARGET" />
-              <deviceKey>
-                <Key>
-                  <type value="SERIAL_NUMBER" />
-                  <value value="adb-27041JEGR13298-QBhlg1._adb-tls-connect._tcp" />
+                  <value value="adb-R3CRC09CACR-npnFpy._adb-tls-connect._tcp" />
                 </Key>
               </deviceKey>
             </Target>

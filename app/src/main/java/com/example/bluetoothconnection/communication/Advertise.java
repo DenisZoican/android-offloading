@@ -9,6 +9,7 @@ import static com.example.bluetoothconnection.opencv.ImageProcessing.convertImag
 import static com.example.bluetoothconnection.opencv.ImageProcessing.getImagePart;
 import static com.example.bluetoothconnection.opencv.ImageProcessing.processImage;
 
+import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.Context;
 import android.os.Build;
@@ -211,7 +212,7 @@ public class Advertise extends Device {
 
         sendDeviceNode(neighboursThatNeedToBeUpdated, visitedNodes);
 
-        updateAllDevicesTextView();
+        updateAllDevicesTextView(false);
     }
 
     private void responseMatReceivedBehavior(PayloadResponseMatData payloadResponseMatData, String endpointId) {
@@ -336,12 +337,18 @@ public class Advertise extends Device {
         t1.start();
     }
     ////// UI stuff
-    private void updateAllDevicesTextView(){
+    private void updateAllDevicesTextView(boolean updateFromOnEndpointLost){
         TextView allDevicesTextView = activity.findViewById(R.id.allDevices);
+        String messageToBeDisplayed = "";
         String allNeighboursText = getNode().getNeighbours().keySet().stream().reduce("", (previousElement, currentElement)->{
             return previousElement + " " + currentElement;
         });
-        allDevicesTextView.setText(allNeighboursText);
+        if(updateFromOnEndpointLost) {
+            messageToBeDisplayed = allNeighboursText;
+        } else {
+            messageToBeDisplayed = "Connected to endpoints: " + allNeighboursText;
+        }
+        allDevicesTextView.setText(messageToBeDisplayed);
     }
     protected void onEndpointLostBehaviour(String endpointId) {
         DeviceUsedInProcessingDetails neighbourLostDetails = devicesUsedInProcessing.get(endpointId);
@@ -422,7 +429,7 @@ public class Advertise extends Device {
         List<String> endpointsIds = new ArrayList<>(getNode().getNeighbours().keySet());
         sendDeviceNode(endpointsIds, new HashSet<>());
 
-        updateAllDevicesTextView();
+        updateAllDevicesTextView(true);
     }
 
     private void sendHeartbeatToRequestInitiator() {
